@@ -192,12 +192,123 @@ int TrainView::handle(int event) {
     return Fl_Gl_Window::handle(event);
 }
 
+void TrainView::updateWave(const int& size) {
+    if (!this->plane)
+        return;
+
+    const int division = 100;
+    const float SIZE = 10.0f;
+
+    // Define waves with same parameters as initialization
+    struct Wave {
+        glm::vec2 direction;
+        float wavelength;
+        float amplitude;
+        float speed;
+        float frequency;
+    };
+
+    std::vector<Wave> waves = { { { 1.0f, 0.0f }, 2.0f, 0.10f, 1.0f },
+                                { { 0.7f, 0.7f }, 3.0f, 0.05f, 0.8f },
+                                { { -0.6f, 0.8f }, 1.5f, 0.07f, 1.2f } };
+
+    for (auto& wave : waves) {
+        wave.frequency = 2.0f * M_PI / wave.wavelength;
+    }
+
+    std::vector<GLfloat> vertices;
+    std::vector<GLfloat> normals;
+    std::vector<GLfloat> colors;
+
+    // Recalculate vertex positions with time offset
+    float half = SIZE / 2.0f;
+    for (int j = 0; j <= division; ++j) {
+        for (int i = 0; i <= division; ++i) {
+            float x = -half + SIZE * (float)i / division;
+            float z = -half + SIZE * (float)j / division;
+
+            // Calculate height using wave functions with time offset
+            float h = 0.0f;
+            glm::vec3 normal(0.0f, 1.0f, 0.0f);
+
+            for (const auto& w : waves) {
+                // Normalize direction
+                glm::vec2 dir = glm::normalize(w.direction);
+                float dot = glm::dot(dir, glm::vec2(x, z));
+
+                // Apply time-based phase shift for animation
+                float phase = dot * w.frequency - waveTime * w.speed;
+                h += w.amplitude * sin(phase);
+
+                // Calculate normal gradient for better lighting
+                float cosPhase = cos(phase);
+                normal.x -= w.amplitude * w.frequency * dir.x * cosPhase;
+                normal.z -= w.amplitude * w.frequency * dir.y * cosPhase;
+            }
+
+            normal = glm::normalize(normal);
+
+            // Update vertex position
+            vertices.push_back(x);
+            vertices.push_back(h);
+            vertices.push_back(z);
+
+            // Update normals
+            normals.push_back(normal.x);
+            normals.push_back(normal.y);
+            normals.push_back(normal.z);
+
+            // Water color based on slope (foam on steep areas)
+            float slope = glm::clamp(1.0f - normal.y, 0.0f, 1.0f);
+            float foam = glm::smoothstep(0.25f, 0.8f, slope);
+            glm::vec3 baseWater(0.02f, 0.30f, 0.45f);  // deep teal
+            glm::vec3 foamColor(0.85f, 0.90f, 0.95f);  // light foam
+            glm::vec3 finalColor = baseWater * (0.85f + 0.15f * normal.y);
+            finalColor = glm::mix(finalColor, foamColor, foam * 0.6f);
+
+            colors.push_back(finalColor.r);
+            colors.push_back(finalColor.g);
+            colors.push_back(finalColor.b);
+        }
+    }
+
+    // Update VBO data
+    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(GLfloat),
+                    vertices.data());
+
+    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, normals.size() * sizeof(GLfloat),
+                    normals.data());
+
+    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
+    glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(GLfloat),
+                    colors.data());
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 //************************************************************************
 //
 // * this is the code that actually draws the window
 //   it puts a lot of the work into other routines to simplify things
 //========================================================================
 void TrainView::draw() {
+    const int division = 100;  // Number of subdivisions
+    const float SIZE = 10.0f;  // Plane size
+
+    struct Wave {
+        glm::vec2 direction;
+        float wavelength;
+        float amplitude;
+        float speed;
+        float frequency;
+    };
+
+    std::vector<Wave> waves = { { { 1.0f, 0.0f }, 2.0f, 0.10f, 1.0f },
+                                { { 0.7f, 0.7f }, 3.0f, 0.05f, 0.8f },
+                                { { -0.6f, 0.8f }, 1.5f, 0.07f, 1.2f } };
+
     //*********************************************************************
     //
     // * Set up basic opengl informaiton
@@ -221,25 +332,9 @@ void TrainView::draw() {
         glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
         if (!this->plane) {
-            const int division = 100;  // Number of subdivisions
-            const float SIZE = 10.0f;  // Plane size
-
-            struct Wave {
-                glm::vec2 direction;
-                float wavelength;
-                float amplitude;
-                float speed;
-                float frequency;
-            };
-
-            std::vector<Wave> waves = {
-                { { 1.0f, 0.0f }, 2.0f, 0.10f, 1.0f },
-                { { 0.7f, 0.7f }, 3.0f, 0.05f, 0.8f },
-                { { -0.6f, 0.8f }, 1.5f, 0.07f, 1.2f }
-            };
-
-            for (auto& w : waves)
-                w.frequency = 2.0f * M_PI / w.wavelength;
+            for (auto& wave : waves) {
+                wave.frequency = 2.0f * M_PI / wave.wavelength;
+            }
 
             std::vector<GLfloat> vertices;
             std::vector<GLfloat> normals;
@@ -247,19 +342,15 @@ void TrainView::draw() {
             std::vector<GLfloat> colors;
             std::vector<GLuint> elements;
 
-            // Generate vertex data
+            // Generate vertex data (initial flat plane)
             float half = SIZE / 2.0f;
             for (int j = 0; j <= division; ++j) {
                 for (int i = 0; i <= division; ++i) {
                     float x = -half + SIZE * (float)i / division;
                     float z = -half + SIZE * (float)j / division;
 
-                    // Calculate height using wave functions
+                    // Start with flat surface - waves will be updated dynamically
                     float h = 0.0f;
-                    for (const auto& w : waves) {
-                        float dot = glm::dot(w.direction, glm::vec2(x, z));
-                        h += w.amplitude * sin(dot * w.frequency);
-                    }
 
                     // Vertex position
                     vertices.push_back(x);
@@ -275,11 +366,10 @@ void TrainView::draw() {
                     textureCoordinates.push_back((float)i / division);
                     textureCoordinates.push_back((float)j / division);
 
-                    // Color based on height
-                    float blue = glm::clamp(0.4f + h * 4.0f, 0.0f, 1.0f);
-                    colors.push_back(0.0f);  // R
-                    colors.push_back(0.0f);  // G
-                    colors.push_back(blue);  // B
+                    // Water-like base tint (teal)
+                    colors.push_back(0.02f);  // R
+                    colors.push_back(0.30f);  // G
+                    colors.push_back(0.45f);  // B
                 }
             }
 
@@ -313,34 +403,35 @@ void TrainView::draw() {
 
             glBindVertexArray(this->plane->vao);
 
-            // Vertex position
+            // Vertex position (use GL_DYNAMIC_DRAW for animated data)
             glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
             glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat),
-                         vertices.data(), GL_STATIC_DRAW);
+                         vertices.data(), GL_DYNAMIC_DRAW);
             glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
                                   (GLvoid*)0);
             glEnableVertexAttribArray(0);
 
-            // Normals
+            // Normals (use GL_DYNAMIC_DRAW for animated data)
             glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
             glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(GLfloat),
-                         normals.data(), GL_STATIC_DRAW);
+                         normals.data(), GL_DYNAMIC_DRAW);
             glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
                                   (GLvoid*)0);
             glEnableVertexAttribArray(1);
 
             // Texture coordinates
             glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-            glBufferData(GL_ARRAY_BUFFER, textureCoordinates.size() * sizeof(GLfloat),
+            glBufferData(GL_ARRAY_BUFFER,
+                         textureCoordinates.size() * sizeof(GLfloat),
                          textureCoordinates.data(), GL_STATIC_DRAW);
             glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
                                   (GLvoid*)0);
             glEnableVertexAttribArray(2);
 
-            // Colors
+            // Colors (use GL_DYNAMIC_DRAW for animated data)
             glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
             glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(GLfloat),
-                         colors.data(), GL_STATIC_DRAW);
+                         colors.data(), GL_DYNAMIC_DRAW);
             glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
                                   (GLvoid*)0);
             glEnableVertexAttribArray(3);
@@ -355,6 +446,7 @@ void TrainView::draw() {
             glBindVertexArray(0);
         }
 
+        // Triangle
         // if (!this->plane) {
         //     // Equilateral triangle - centered at origin
         //     GLfloat vertices[] = { -0.5f, 0.0f, -sqrt(3.0f) / 6.0f,
@@ -600,8 +692,10 @@ void TrainView::draw() {
                       this->common_matrices->ubo, 0,
                       this->common_matrices->size);
 
-    // bind shader
-    this->shader->Use();
+    waveTime += 0.016f;  // Update wave animation time (approximately 60 FPS)
+    updateWave(100);     // Update wave vertices with new time
+
+    this->shader->Use();  // Bind shader
 
     glm::mat4 model_matrix = glm::mat4();
     model_matrix = glm::translate(model_matrix, glm::vec3(0, 10.0f, 0.0f));

@@ -86,7 +86,9 @@ public:
 
 	void setUBO();
 
-public:
+    void updateWave(const int &size);
+
+   public:
 	ArcBallCam		arcball;			// keep an ArcBall for the UI
 	int				selectedCube;  // simple - just remember which cube is selected
 
@@ -97,4 +99,6 @@ public:
 	Texture2D *texture = nullptr;
 	VAO *plane = nullptr;
 	UBO *common_matrices = nullptr;
+
+    float waveTime = 0.0f;
 };
