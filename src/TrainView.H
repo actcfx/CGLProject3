@@ -29,7 +29,10 @@
 // Preclarify for preventing the compiler error
 class TrainWindow;
 class CTrack;
+class ControlPoint;
 
+#include <vector>
+#include "Utilities/Pnt3f.H"
 
 //#######################################################################
 // TODO
@@ -37,14 +40,13 @@ class CTrack;
 // be drawn, or adjust the lighting, or ...
 //#######################################################################
 
-
 // The TrainView also needs to handle its user interface events.
 // since this is an FLTk Window, we need to include FlTk Headers
 // the pragmas turn off the warnings from FlTk - our code should have no warnings,
 // but their code doesn't meet that standard
 #pragma warning(push)
-#pragma warning(disable:4312)
-#pragma warning(disable:4311)
+#pragma warning(disable : 4312)
+#pragma warning(disable : 4311)
 #include <Fl/Fl_Gl_Window.h>
 #pragma warning(pop)
 
@@ -55,50 +57,76 @@ class CTrack;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
-class TrainView : public Fl_Gl_Window
-{
+class TrainView : public Fl_Gl_Window {
 public:
-	// note that we keep the "standard widget" constructor arguments
-	TrainView(int x, int y, int w, int h, const char* l = 0);
+    // note that we keep the "standard widget" constructor arguments
+    TrainView(int x, int y, int w, int h, const char* l = 0);
 
-	// overrides of important window things
-	virtual int handle(int);
-	virtual void draw();
+    // overrides of important window things
+    virtual int handle(int);
+    virtual void draw();
 
-	// all of the actual drawing happens in this routine
-	// it has to be encapsulated, since we draw differently if
-	// we're drawing shadows (no colors, for example)
-	void drawStuff(bool doingShadows=false);
+    // all of the actual drawing happens in this routine
+    // it has to be encapsulated, since we draw differently if
+    // we're drawing shadows (no colors, for example)
+    void drawStuff(bool doingShadows = false);
 
-	void drawTrack(bool doingShadows);
+    void drawTrack(bool doingShadows);
 
-	void drawTrain(bool doingShadows);
+    void drawTrain(bool doingShadows);
 
-	// setup the projection - assuming that the projection stack has been
-	// cleared for you
-	void setProjection();
+    // setup the projection - assuming that the projection stack has been
+    // cleared for you
+    void setProjection();
 
-	// Reset the Arc ball control
-	void resetArcball();
+    // Reset the Arc ball control
+    void resetArcball();
 
-	// pick a point (for when the mouse goes down)
-	void doPick();
+    // pick a point (for when the mouse goes down)
+    void doPick();
 
-	void setUBO();
+public:
+    ArcBallCam arcball;  // keep an ArcBall for the UI
+    int selectedCube;    // simple - just remember which cube is selected
 
-    void updateWave(const int &size);
+    TrainWindow* tw;   // The parent of this display window
+    CTrack* m_pTrack;  // The track of the entire scene
 
-   public:
-	ArcBallCam		arcball;			// keep an ArcBall for the UI
-	int				selectedCube;  // simple - just remember which cube is selected
-
-	TrainWindow*	tw;				// The parent of this display window
-	CTrack*			m_pTrack;		// The track of the entire scene
-
-	Shader *shader = nullptr;
-	Texture2D *texture = nullptr;
-	VAO *plane = nullptr;
-	UBO *common_matrices = nullptr;
+    Shader* shader = nullptr;
+    Texture2D* texture = nullptr;
+    VAO* plane = nullptr;
+    UBO* common_matrices = nullptr;
 
     float waveTime = 0.0f;
+
+private:
+    // ---------- Lighting ----------
+    void setLighting();
+
+    // Train position and orientation for spotlight
+    Pnt3f trainPosition;
+    Pnt3f trainForward;
+
+    // ---------- Arc Length ----------
+    struct ArcLengthData {
+        size_t segmentCount = 0;
+        std::vector<float> segOffset;
+        std::vector<std::vector<float>> cumLen;
+        std::vector<std::vector<float>> tSamples;
+        float totalLen = 0.0f;
+    };
+
+    static constexpr int ARCLEN_SAMPLES = 128;
+
+    static size_t wrapIndex(int index, size_t count);
+    static Pnt3f evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1,
+                                  const Pnt3f& p2, const Pnt3f& p3, float t);
+    static Pnt3f evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1,
+                                 const Pnt3f& p2, const Pnt3f& p3, float t);
+    static Pnt3f evaluateSplinePosition(const std::vector<ControlPoint>& points,
+                                        int mode, size_t segmentIdx, float t);
+    static ArcLengthData buildArcLengthData(
+        const std::vector<ControlPoint>& points, int mode);
+    static void mapLengthToSegment(const ArcLengthData& data, float s,
+                                   size_t& segment, float& outT);
 };
