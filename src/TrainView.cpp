@@ -22,6 +22,7 @@ references)
 
 *************************************************************************/
 
+#include <algorithm>
 #include <cmath>
 #include <iostream>
 #include <vector>
@@ -49,6 +50,178 @@ references)
 
 #define DIVIDE_LINE 1000.0f
 #define GUAGE 5.0f
+
+namespace {
+const int ARCLEN_SAMPLES = 128;
+
+size_t wrapIndex(int index, size_t count) {
+    if (count == 0)
+        return 0;
+    int wrapped = index % static_cast<int>(count);
+    if (wrapped < 0)
+        wrapped += static_cast<int>(count);
+    return static_cast<size_t>(wrapped);
+}
+
+Pnt3f evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1, const Pnt3f& p2,
+                       const Pnt3f& p3, float t) {
+    const float tension = 0.0f;
+    const float factor = (1.0f - tension) * 0.5f;
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+    const float h10 = t3 - 2.0f * t2 + t;
+    const float h01 = -2.0f * t3 + 3.0f * t2;
+    const float h11 = t3 - t2;
+    Pnt3f m1 = (p2 - p0) * factor;
+    Pnt3f m2 = (p3 - p1) * factor;
+    return p1 * h00 + m1 * h10 + p2 * h01 + m2 * h11;
+}
+
+Pnt3f evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1, const Pnt3f& p2,
+                      const Pnt3f& p3, float t) {
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float sixth = 1.0f / 6.0f;
+    const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
+    const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
+    const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
+    const float b3 = t3 * sixth;
+    return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
+}
+
+Pnt3f evaluateSplinePosition(const std::vector<ControlPoint>& points, int mode,
+                             size_t segmentIdx, float t) {
+    const size_t pointCount = points.size();
+    if (pointCount == 0)
+        return Pnt3f(0, 0, 0);
+
+    if (mode == 1) {
+        const Pnt3f& p0 = points[segmentIdx % pointCount].pos;
+        const Pnt3f& p1 = points[(segmentIdx + 1) % pointCount].pos;
+        return (1.0f - t) * p0 + t * p1;
+    }
+
+    size_t prev = wrapIndex(static_cast<int>(segmentIdx) - 1, pointCount);
+    size_t next = (segmentIdx + 1) % pointCount;
+    size_t next2 = (segmentIdx + 2) % pointCount;
+
+    const Pnt3f& p0 = points[prev].pos;
+    const Pnt3f& p1 = points[segmentIdx].pos;
+    const Pnt3f& p2 = points[next].pos;
+    const Pnt3f& p3 = points[next2].pos;
+
+    if (mode == 2)
+        return evaluateCardinal(p0, p1, p2, p3, t);
+    return evaluateBSpline(p0, p1, p2, p3, t);
+}
+
+struct ArcLengthData {
+    size_t segmentCount = 0;
+    std::vector<float> segOffset;
+    std::vector<std::vector<float>> cumLen;
+    std::vector<std::vector<float>> tSamples;
+    float totalLen = 0.0f;
+};
+
+ArcLengthData buildArcLengthData(const std::vector<ControlPoint>& points,
+                                 int mode) {
+    ArcLengthData data;
+    const size_t pointCount = points.size();
+    if ((mode == 1 && pointCount < 2) || (mode != 1 && pointCount < 4))
+        return data;
+
+    data.segmentCount = pointCount;
+    data.segOffset.assign(pointCount + 1, 0.0f);
+    data.cumLen.assign(pointCount,
+                       std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
+    data.tSamples.assign(pointCount,
+                         std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
+
+    for (size_t si = 0; si < pointCount; ++si) {
+        Pnt3f prevPos = evaluateSplinePosition(points, mode, si, 0.0f);
+        for (int sample = 1; sample <= ARCLEN_SAMPLES; ++sample) {
+            float t = static_cast<float>(sample) / ARCLEN_SAMPLES;
+            data.tSamples[si][sample] = t;
+            Pnt3f current = evaluateSplinePosition(points, mode, si, t);
+            Pnt3f diff = current - prevPos;
+            float dist =
+                std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+            data.cumLen[si][sample] = data.cumLen[si][sample - 1] + dist;
+            prevPos = current;
+        }
+        float segmentLength = data.cumLen[si][ARCLEN_SAMPLES];
+        data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
+    }
+    data.totalLen = data.segOffset.back();
+    return data;
+}
+
+void mapLengthToSegment(const ArcLengthData& data, float s, size_t& segment,
+                        float& outT) {
+    if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
+        segment = 0;
+        outT = 0.0f;
+        return;
+    }
+
+    float clamped = s;
+    if (clamped <= 0.0f) {
+        segment = 0;
+        outT = 0.0f;
+        return;
+    }
+    if (clamped >= data.totalLen) {
+        segment = data.segmentCount - 1;
+        outT = 1.0f;
+        return;
+    }
+
+    size_t lo = 0;
+    size_t hi = data.segmentCount;
+    while (lo + 1 < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (data.segOffset[mid] <= clamped)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    segment = lo;
+    float localLength = clamped - data.segOffset[segment];
+    float segmentLength = data.segOffset[segment + 1] - data.segOffset[segment];
+    if (segmentLength <= 1e-6f) {
+        outT = 0.0f;
+        return;
+    }
+
+    const auto& cum = data.cumLen[segment];
+    const auto& ts = data.tSamples[segment];
+    int loI = 0;
+    int hiI = ARCLEN_SAMPLES;
+    while (loI < hiI) {
+        int mid = (loI + hiI) / 2;
+        if (cum[mid] < localLength)
+            loI = mid + 1;
+        else
+            hiI = mid;
+    }
+    int idx = (loI < ARCLEN_SAMPLES) ? loI : ARCLEN_SAMPLES;
+    int prevIdx = (idx > 0) ? idx - 1 : 0;
+    float s0 = cum[prevIdx];
+    float s1 = cum[idx];
+    float t0 = ts[prevIdx];
+    float t1 = ts[idx];
+    float tau = 0.0f;
+    float denom = s1 - s0;
+    if (denom > 1e-6f)
+        tau = (localLength - s0) / denom;
+    if (tau < 0.0f)
+        tau = 0.0f;
+    else if (tau > 1.0f)
+        tau = 1.0f;
+    outT = t0 + tau * (t1 - t0);
+}
+}  // namespace
 
 void TrainView::setUBO() {
     float wdt = this->pixel_w();
@@ -827,7 +1000,6 @@ void TrainView::drawTrack(bool doingShadows) {
                                 { 0.0f, 0.0f, 0.0f, 0.0f },
                                 { 0.0f, 0.0f, 0.0f, 0.0f } };
         memcpy(M, linearM, sizeof(linearM));
-
     } else if (tw->splineBrowser->value() == 2) {
         // Cardinal Cubic
         float cardinalM[4][4] = { { -0.5f, 1.0f, -0.5f, 0.0f },
@@ -844,10 +1016,12 @@ void TrainView::drawTrack(bool doingShadows) {
         memcpy(M, bSplineM, sizeof(bSplineM));
     }
 
-    if (!doingShadows)
+    if (!doingShadows) {
+        //  Track color
         glColor3ub(200, 200, 200);
+    }
 
-    glLineWidth(8.0f);
+    glLineWidth(8.0f);  // Track line width
 
     // Sampled geometry and frames along the spline
     std::vector<Pnt3f> trackCenters;
@@ -978,6 +1152,123 @@ void TrainView::drawTrack(bool doingShadows) {
 
             upVectors[i] = up;
             rightVectors[i] = right;
+        }
+    }
+
+    if (tw->arcLength && tw->arcLength->value()) {
+        const size_t sampleCount = trackCenters.size();
+        if (sampleCount >= 2) {
+            std::vector<float> cumLen(sampleCount, 0.0f);
+            for (size_t i = 1; i < sampleCount; ++i) {
+                Pnt3f delta = trackCenters[i] - trackCenters[i - 1];
+                float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y +
+                                       delta.z * delta.z);
+                cumLen[i] = cumLen[i - 1] + dist;
+            }
+            float totalLen = cumLen.back();
+            if (totalLen > 1e-6f) {
+                std::vector<Pnt3f> resampledCenters(sampleCount);
+                std::vector<Pnt3f> resampledUps(sampleCount);
+                const float invSamples =
+                    1.0f / static_cast<float>(sampleCount - 1);
+                size_t baseIdx = 0;
+                for (size_t sample = 0; sample < sampleCount; ++sample) {
+                    float target = totalLen * sample * invSamples;
+                    while (baseIdx + 1 < sampleCount &&
+                           cumLen[baseIdx + 1] < target) {
+                        ++baseIdx;
+                    }
+                    if (baseIdx >= sampleCount - 1)
+                        baseIdx = sampleCount - 2;
+                    size_t nextIdx = baseIdx + 1;
+                    float segmentLen = cumLen[nextIdx] - cumLen[baseIdx];
+                    float alpha = 0.0f;
+                    if (segmentLen > 1e-6f) {
+                        alpha = (target - cumLen[baseIdx]) / segmentLen;
+                        if (alpha < 0.0f)
+                            alpha = 0.0f;
+                        else if (alpha > 1.0f)
+                            alpha = 1.0f;
+                    }
+                    auto lerpPoint = [](const Pnt3f& a, const Pnt3f& b,
+                                        float t) {
+                        return Pnt3f(a.x + (b.x - a.x) * t,
+                                     a.y + (b.y - a.y) * t,
+                                     a.z + (b.z - a.z) * t);
+                    };
+                    resampledCenters[sample] = lerpPoint(
+                        trackCenters[baseIdx], trackCenters[nextIdx], alpha);
+                    resampledUps[sample] =
+                        lerpPoint(upVectors[baseIdx], upVectors[nextIdx], alpha);
+                }
+
+                std::vector<Pnt3f> resampledTangents(sampleCount);
+                std::vector<Pnt3f> resampledRights(sampleCount);
+                Pnt3f prevUp(0.0f, 1.0f, 0.0f);
+                Pnt3f prevRight(1.0f, 0.0f, 0.0f);
+                for (size_t sample = 0; sample < sampleCount; ++sample) {
+                    Pnt3f curr = resampledCenters[sample];
+                    Pnt3f next = resampledCenters[(sample + 1) % sampleCount];
+                    Pnt3f tangent = next - curr;
+                    float tanLen = std::sqrt(tangent.x * tangent.x +
+                                             tangent.y * tangent.y +
+                                             tangent.z * tangent.z);
+                    if (tanLen < 1e-6f) {
+                        tangent = trackTangents[sample];
+                    } else {
+                        tangent = Pnt3f(tangent.x / tanLen, tangent.y / tanLen,
+                                        tangent.z / tanLen);
+                    }
+
+                    Pnt3f up = resampledUps[sample];
+                    float dotTU =
+                        tangent.x * up.x + tangent.y * up.y + tangent.z * up.z;
+                    up = Pnt3f(up.x - dotTU * tangent.x,
+                               up.y - dotTU * tangent.y,
+                               up.z - dotTU * tangent.z);
+                    float upLen =
+                        std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+                    if (upLen < 1e-6f)
+                        up = prevUp;
+                    else
+                        up = Pnt3f(up.x / upLen, up.y / upLen, up.z / upLen);
+
+                    float continuityDot =
+                        up.x * prevUp.x + up.y * prevUp.y + up.z * prevUp.z;
+                    if (continuityDot < 0.0f)
+                        up = Pnt3f(-up.x, -up.y, -up.z);
+
+                    Pnt3f right = tangent * up;
+                    float rightLen =
+                        std::sqrt(right.x * right.x + right.y * right.y +
+                                  right.z * right.z);
+                    if (rightLen < 1e-6f)
+                        right = prevRight;
+                    else
+                        right = Pnt3f(right.x / rightLen, right.y / rightLen,
+                                      right.z / rightLen);
+
+                    up = right * tangent;
+                    float finalUpLen =
+                        std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+                    if (finalUpLen < 1e-6f)
+                        up = prevUp;
+                    else
+                        up = Pnt3f(up.x / finalUpLen, up.y / finalUpLen,
+                                   up.z / finalUpLen);
+
+                    resampledTangents[sample] = tangent;
+                    resampledRights[sample] = right;
+                    resampledUps[sample] = up;
+                    prevUp = up;
+                    prevRight = right;
+                }
+
+                trackCenters = std::move(resampledCenters);
+                trackTangents = std::move(resampledTangents);
+                rightVectors = std::move(resampledRights);
+                upVectors = std::move(resampledUps);
+            }
         }
     }
 
@@ -1114,9 +1405,21 @@ void TrainView::drawTrain(bool doingShadows) {
         wrappedParam += static_cast<float>(pointCount);
     }
 
-    const size_t baseIndex =
+    size_t segmentIndex =
         static_cast<size_t>(std::floor(wrappedParam)) % pointCount;
     float localT = wrappedParam - std::floor(wrappedParam);
+
+    if (tw->arcLength && tw->arcLength->value()) {
+        ArcLengthData arcData =
+            buildArcLengthData(m_pTrack->points, tw->splineBrowser->value());
+        if (arcData.totalLen > 1e-6f) {
+            float normalized = wrappedParam / static_cast<float>(pointCount);
+            if (normalized < 0.0f)
+                normalized += 1.0f;
+            float targetLength = normalized * arcData.totalLen;
+            mapLengthToSegment(arcData, targetLength, segmentIndex, localT);
+        }
+    }
 
     auto wrapIndex = [pointCount](int index) {
         int wrapped = index % static_cast<int>(pointCount);
@@ -1131,9 +1434,9 @@ void TrainView::drawTrain(bool doingShadows) {
     Pnt3f up;
 
     if (tw->splineBrowser->value() == 1) {
-        const ControlPoint& cp1 = m_pTrack->points[baseIndex];
+        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
         const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) + 1)];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
 
         position = (1.0f - localT) * cp1.pos + localT * cp2.pos;
         up = (1.0f - localT) * cp1.orient + localT * cp2.orient;
@@ -1149,12 +1452,12 @@ void TrainView::drawTrain(bool doingShadows) {
         }
     } else if (tw->splineBrowser->value() == 2) {
         const ControlPoint& cp0 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) - 1)];
-        const ControlPoint& cp1 = m_pTrack->points[baseIndex];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) - 1)];
+        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
         const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) + 1)];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
         const ControlPoint& cp3 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) + 2)];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 2)];
 
         const float tension = 0.0f;
         const float tensionFactor = (1.0f - tension) * 0.5f;
@@ -1191,12 +1494,12 @@ void TrainView::drawTrain(bool doingShadows) {
         }
     } else {
         const ControlPoint& cp0 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) - 1)];
-        const ControlPoint& cp1 = m_pTrack->points[baseIndex];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) - 1)];
+        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
         const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) + 1)];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
         const ControlPoint& cp3 =
-            m_pTrack->points[wrapIndex(static_cast<int>(baseIndex) + 2)];
+            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 2)];
 
         const float t2 = localT * localT;
         const float t3 = t2 * localT;
