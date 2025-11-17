@@ -27,14 +27,14 @@ references)
 #include <iostream>
 #include <vector>
 
-// we will need OpenGL, and OpenGL needs windows.h
-#include <windows.h>
+#include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 // #include "GL/gl.h"
 #include <Fl/fl.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "ControlPoint.H"
 #include "GL/glu.h"
 #include "TrainView.H"
 #include "TrainWindow.H"
@@ -50,200 +50,6 @@ references)
 
 #define DIVIDE_LINE 1000.0f
 #define GUAGE 5.0f
-
-namespace {
-const int ARCLEN_SAMPLES = 128;
-
-size_t wrapIndex(int index, size_t count) {
-    if (count == 0)
-        return 0;
-    int wrapped = index % static_cast<int>(count);
-    if (wrapped < 0)
-        wrapped += static_cast<int>(count);
-    return static_cast<size_t>(wrapped);
-}
-
-Pnt3f evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1, const Pnt3f& p2,
-                       const Pnt3f& p3, float t) {
-    const float tension = 0.0f;
-    const float factor = (1.0f - tension) * 0.5f;
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
-    const float h10 = t3 - 2.0f * t2 + t;
-    const float h01 = -2.0f * t3 + 3.0f * t2;
-    const float h11 = t3 - t2;
-    Pnt3f m1 = (p2 - p0) * factor;
-    Pnt3f m2 = (p3 - p1) * factor;
-    return p1 * h00 + m1 * h10 + p2 * h01 + m2 * h11;
-}
-
-Pnt3f evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1, const Pnt3f& p2,
-                      const Pnt3f& p3, float t) {
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float sixth = 1.0f / 6.0f;
-    const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
-    const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
-    const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
-    const float b3 = t3 * sixth;
-    return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
-}
-
-Pnt3f evaluateSplinePosition(const std::vector<ControlPoint>& points, int mode,
-                             size_t segmentIdx, float t) {
-    const size_t pointCount = points.size();
-    if (pointCount == 0)
-        return Pnt3f(0, 0, 0);
-
-    if (mode == 1) {
-        const Pnt3f& p0 = points[segmentIdx % pointCount].pos;
-        const Pnt3f& p1 = points[(segmentIdx + 1) % pointCount].pos;
-        return (1.0f - t) * p0 + t * p1;
-    }
-
-    size_t prev = wrapIndex(static_cast<int>(segmentIdx) - 1, pointCount);
-    size_t next = (segmentIdx + 1) % pointCount;
-    size_t next2 = (segmentIdx + 2) % pointCount;
-
-    const Pnt3f& p0 = points[prev].pos;
-    const Pnt3f& p1 = points[segmentIdx].pos;
-    const Pnt3f& p2 = points[next].pos;
-    const Pnt3f& p3 = points[next2].pos;
-
-    if (mode == 2)
-        return evaluateCardinal(p0, p1, p2, p3, t);
-    return evaluateBSpline(p0, p1, p2, p3, t);
-}
-
-struct ArcLengthData {
-    size_t segmentCount = 0;
-    std::vector<float> segOffset;
-    std::vector<std::vector<float>> cumLen;
-    std::vector<std::vector<float>> tSamples;
-    float totalLen = 0.0f;
-};
-
-ArcLengthData buildArcLengthData(const std::vector<ControlPoint>& points,
-                                 int mode) {
-    ArcLengthData data;
-    const size_t pointCount = points.size();
-    if ((mode == 1 && pointCount < 2) || (mode != 1 && pointCount < 4))
-        return data;
-
-    data.segmentCount = pointCount;
-    data.segOffset.assign(pointCount + 1, 0.0f);
-    data.cumLen.assign(pointCount,
-                       std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
-    data.tSamples.assign(pointCount,
-                         std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
-
-    for (size_t si = 0; si < pointCount; ++si) {
-        Pnt3f prevPos = evaluateSplinePosition(points, mode, si, 0.0f);
-        for (int sample = 1; sample <= ARCLEN_SAMPLES; ++sample) {
-            float t = static_cast<float>(sample) / ARCLEN_SAMPLES;
-            data.tSamples[si][sample] = t;
-            Pnt3f current = evaluateSplinePosition(points, mode, si, t);
-            Pnt3f diff = current - prevPos;
-            float dist =
-                std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            data.cumLen[si][sample] = data.cumLen[si][sample - 1] + dist;
-            prevPos = current;
-        }
-        float segmentLength = data.cumLen[si][ARCLEN_SAMPLES];
-        data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
-    }
-    data.totalLen = data.segOffset.back();
-    return data;
-}
-
-void mapLengthToSegment(const ArcLengthData& data, float s, size_t& segment,
-                        float& outT) {
-    if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
-        segment = 0;
-        outT = 0.0f;
-        return;
-    }
-
-    float clamped = s;
-    if (clamped <= 0.0f) {
-        segment = 0;
-        outT = 0.0f;
-        return;
-    }
-    if (clamped >= data.totalLen) {
-        segment = data.segmentCount - 1;
-        outT = 1.0f;
-        return;
-    }
-
-    size_t lo = 0;
-    size_t hi = data.segmentCount;
-    while (lo + 1 < hi) {
-        size_t mid = (lo + hi) / 2;
-        if (data.segOffset[mid] <= clamped)
-            lo = mid;
-        else
-            hi = mid;
-    }
-    segment = lo;
-    float localLength = clamped - data.segOffset[segment];
-    float segmentLength = data.segOffset[segment + 1] - data.segOffset[segment];
-    if (segmentLength <= 1e-6f) {
-        outT = 0.0f;
-        return;
-    }
-
-    const auto& cum = data.cumLen[segment];
-    const auto& ts = data.tSamples[segment];
-    int loI = 0;
-    int hiI = ARCLEN_SAMPLES;
-    while (loI < hiI) {
-        int mid = (loI + hiI) / 2;
-        if (cum[mid] < localLength)
-            loI = mid + 1;
-        else
-            hiI = mid;
-    }
-    int idx = (loI < ARCLEN_SAMPLES) ? loI : ARCLEN_SAMPLES;
-    int prevIdx = (idx > 0) ? idx - 1 : 0;
-    float s0 = cum[prevIdx];
-    float s1 = cum[idx];
-    float t0 = ts[prevIdx];
-    float t1 = ts[idx];
-    float tau = 0.0f;
-    float denom = s1 - s0;
-    if (denom > 1e-6f)
-        tau = (localLength - s0) / denom;
-    if (tau < 0.0f)
-        tau = 0.0f;
-    else if (tau > 1.0f)
-        tau = 1.0f;
-    outT = t0 + tau * (t1 - t0);
-}
-}  // namespace
-
-void TrainView::setUBO() {
-    float wdt = this->pixel_w();
-    float hgt = this->pixel_h();
-
-    glm::mat4 view_matrix;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
-    // HMatrix view matrix;
-    // this-›arcball -getMatrix(view_matrix);
-
-    glm::mat4 projection_matrix;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
-    // projection_matrix = glm::perspective(glm::radians(this-›arcball.getFov()),
-    // (GLfloat)wdt / (GLfloat)hgt, 0.01f, 1000.f);
-
-    glBindBuffer(GL_UNIFORM_BUFFER, this->common_matrices->ubo);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4),
-                    &projection_matrix[0][0]);
-    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4),
-                    &view_matrix[0][0]);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
 
 //************************************************************************
 //
@@ -366,340 +172,101 @@ int TrainView::handle(int event) {
     return Fl_Gl_Window::handle(event);
 }
 
-void TrainView::updateWave(const int& size) {
-    if (!this->plane)
-        return;
+void TrainView::setLighting() {
+    // enable the lighting
+    glEnable(GL_COLOR_MATERIAL);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_LIGHTING);
+    glEnable(GL_NORMALIZE);
 
-    const int division = 100;
-    const float SIZE = 10.0f;
-
-    // Define waves with same parameters as initialization
-    struct Wave {
-        glm::vec2 direction;
-        float wavelength;
-        float amplitude;
-        float speed;
-        float frequency;
+    // ---------- Directional Light ----------
+    auto setDirectionalLight = []() -> void {
+        float directionalAmbient[] = { 0.0f, 0.0f, 0.0f, 1.0 };  // No ambient
+        float directionalDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0 };
+        float directionalLightPosition[] = { 0.0f, 1.0f, 1.0f, 0.0f };
+        glLightfv(GL_LIGHT0, GL_AMBIENT, directionalAmbient);
+        glLightfv(GL_LIGHT0, GL_DIFFUSE, directionalDiffuse);
+        glLightfv(GL_LIGHT0, GL_POSITION, directionalLightPosition);
     };
 
-    std::vector<Wave> waves = { { { 1.0f, 0.0f }, 2.0f, 0.10f, 1.0f },
-                                { { 0.7f, 0.7f }, 3.0f, 0.05f, 0.8f },
-                                { { -0.6f, 0.8f }, 1.5f, 0.07f, 1.2f } };
+    // ---------- Point Light ----------
+    auto setPointLight = [this]() -> void {
+        float pointAmbient[] = { 0.05f, 0.05f, 0.02f, 1.0f };
+        float pointDiffuse[] = { 1.0f, 1.0f, 0.2f, 1.0f };
 
-    for (auto& wave : waves) {
-        wave.frequency = 2.0f * M_PI / wave.wavelength;
-    }
+        Pnt3f pointPosition(10.0f, 10.0f, 10.0f);
+        Pnt3f pointOrientation(0.0f, -1.0f, 0.0f);
 
-    std::vector<GLfloat> vertices;
-    std::vector<GLfloat> normals;
-    std::vector<GLfloat> colors;
+        if (!m_pTrack->points.empty()) {
+            int selectIndex = (selectedCube >= 0 &&
+                               selectedCube < (int)m_pTrack->points.size())
+                                  ? selectedCube
+                                  : 0;
+            pointPosition = m_pTrack->points[(size_t)selectIndex].pos;
+            pointOrientation = m_pTrack->points[(size_t)selectIndex].orient;
+            pointOrientation.normalize();
+        }
 
-    // Recalculate vertex positions with time offset
-    float half = SIZE / 2.0f;
-    for (int j = 0; j <= division; ++j) {
-        for (int i = 0; i <= division; ++i) {
-            float x = -half + SIZE * (float)i / division;
-            float z = -half + SIZE * (float)j / division;
+        float pointLightPosition[] = { pointPosition.x, pointPosition.y,
+                                       pointPosition.z, 1.0f };
 
-            // Calculate height using wave functions with time offset
-            float h = 0.0f;
-            glm::vec3 normal(0.0f, 1.0f, 0.0f);
+        glLightfv(GL_LIGHT1, GL_AMBIENT, pointAmbient);
+        glLightfv(GL_LIGHT1, GL_DIFFUSE, pointDiffuse);
+        glLightfv(GL_LIGHT1, GL_POSITION, pointLightPosition);
+    };
 
-            for (const auto& w : waves) {
-                // Normalize direction
-                glm::vec2 dir = glm::normalize(w.direction);
-                float dot = glm::dot(dir, glm::vec2(x, z));
+    // ---------- Spot Light ----------
+    auto setSpotLight = [this]() -> void {
+        float spotAmbient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
+        float spotDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
 
-                // Apply time-based phase shift for animation
-                float phase = dot * w.frequency - waveTime * w.speed;
-                h += w.amplitude * sin(phase);
+        float spotLightPosition[] = { trainPosition.x, trainPosition.y,
+                                      trainPosition.z, 1.0f };
+        float spotLightDirection[] = { trainForward.x, trainForward.y,
+                                       trainForward.z };
 
-                // Calculate normal gradient for better lighting
-                float cosPhase = cos(phase);
-                normal.x -= w.amplitude * w.frequency * dir.x * cosPhase;
-                normal.z -= w.amplitude * w.frequency * dir.y * cosPhase;
-            }
+        glLightfv(GL_LIGHT2, GL_AMBIENT, spotAmbient);
+        glLightfv(GL_LIGHT2, GL_DIFFUSE, spotDiffuse);
+        glLightfv(GL_LIGHT2, GL_POSITION, spotLightPosition);
+        glLightfv(GL_LIGHT2, GL_SPOT_DIRECTION, spotLightDirection);
+        glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, 30.0f);
+        glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 15.0f);
+    };
 
-            normal = glm::normalize(normal);
+    if (tw->topCam->value()) {
+        // top view only needs one light
+        setDirectionalLight();
+        glEnable(GL_LIGHT0);
+        glDisable(GL_LIGHT1);
+        glDisable(GL_LIGHT2);
+    } else {
+        if (tw->directionalLightButton->value()) {
+            setDirectionalLight();
+            glEnable(GL_LIGHT0);
+        } else {
+            glDisable(GL_LIGHT0);
+        }
 
-            // Update vertex position
-            vertices.push_back(x);
-            vertices.push_back(h);
-            vertices.push_back(z);
+        if (tw->pointLightButton->value()) {
+            setPointLight();
+            glEnable(GL_LIGHT1);
+        } else {
+            glDisable(GL_LIGHT1);
+        }
 
-            // Update normals
-            normals.push_back(normal.x);
-            normals.push_back(normal.y);
-            normals.push_back(normal.z);
-
-            // Water color based on slope (foam on steep areas)
-            float slope = glm::clamp(1.0f - normal.y, 0.0f, 1.0f);
-            float foam = glm::smoothstep(0.25f, 0.8f, slope);
-            glm::vec3 baseWater(0.02f, 0.30f, 0.45f);  // deep teal
-            glm::vec3 foamColor(0.85f, 0.90f, 0.95f);  // light foam
-            glm::vec3 finalColor = baseWater * (0.85f + 0.15f * normal.y);
-            finalColor = glm::mix(finalColor, foamColor, foam * 0.6f);
-
-            colors.push_back(finalColor.r);
-            colors.push_back(finalColor.g);
-            colors.push_back(finalColor.b);
+        if (tw->spotLightButton->value()) {
+            setSpotLight();
+            glEnable(GL_LIGHT2);
+        } else {
+            glDisable(GL_LIGHT2);
         }
     }
-
-    // Update VBO data
-    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(GLfloat),
-                    vertices.data());
-
-    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, normals.size() * sizeof(GLfloat),
-                    normals.data());
-
-    glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-    glBufferSubData(GL_ARRAY_BUFFER, 0, colors.size() * sizeof(GLfloat),
-                    colors.data());
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-//************************************************************************
-//
-// * this is the code that actually draws the window
-//   it puts a lot of the work into other routines to simplify things
-//========================================================================
 void TrainView::draw() {
-    const int division = 100;  // Number of subdivisions
-    const float SIZE = 10.0f;  // Plane size
-
-    struct Wave {
-        glm::vec2 direction;
-        float wavelength;
-        float amplitude;
-        float speed;
-        float frequency;
-    };
-
-    std::vector<Wave> waves = { { { 1.0f, 0.0f }, 2.0f, 0.10f, 1.0f },
-                                { { 0.7f, 0.7f }, 3.0f, 0.05f, 0.8f },
-                                { { -0.6f, 0.8f }, 1.5f, 0.07f, 1.2f } };
-
-    //*********************************************************************
-    //
-    // * Set up basic opengl informaiton
-    //
-    //**********************************************************************
     // initialized glad
     if (gladLoadGL()) {
-        if (!this->shader) {
-            this->shader = new Shader("./shaders/simple.vert", nullptr, nullptr,
-                                      nullptr, "./shaders/simple.frag");
-        }
 
-        if (!this->common_matrices) {
-            this->common_matrices = new UBO();
-        }
-        this->common_matrices->size = 2 * sizeof(glm::mat4);
-        glGenBuffers(1, &this->common_matrices->ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, this->common_matrices->ubo);
-        glBufferData(GL_UNIFORM_BUFFER, this->common_matrices->size, NULL,
-                     GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-        if (!this->plane) {
-            for (auto& wave : waves) {
-                wave.frequency = 2.0f * M_PI / wave.wavelength;
-            }
-
-            std::vector<GLfloat> vertices;
-            std::vector<GLfloat> normals;
-            std::vector<GLfloat> textureCoordinates;
-            std::vector<GLfloat> colors;
-            std::vector<GLuint> elements;
-
-            // Generate vertex data (initial flat plane)
-            float half = SIZE / 2.0f;
-            for (int j = 0; j <= division; ++j) {
-                for (int i = 0; i <= division; ++i) {
-                    float x = -half + SIZE * (float)i / division;
-                    float z = -half + SIZE * (float)j / division;
-
-                    // Start with flat surface - waves will be updated dynamically
-                    float h = 0.0f;
-
-                    // Vertex position
-                    vertices.push_back(x);
-                    vertices.push_back(h);
-                    vertices.push_back(z);
-
-                    // Simple normals (initially set to up)
-                    normals.push_back(0.0f);
-                    normals.push_back(1.0f);
-                    normals.push_back(0.0f);
-
-                    // Texture coordinates
-                    textureCoordinates.push_back((float)i / division);
-                    textureCoordinates.push_back((float)j / division);
-
-                    // Water-like base tint (teal)
-                    colors.push_back(0.02f);  // R
-                    colors.push_back(0.30f);  // G
-                    colors.push_back(0.45f);  // B
-                }
-            }
-
-            // Generate index data (two right triangles form a square)
-            for (int j = 0; j < division; ++j) {
-                for (int i = 0; i < division; ++i) {
-                    GLuint topLeft = j * (division + 1) + i;
-                    GLuint topRight = topLeft + 1;
-                    GLuint bottomLeft = (j + 1) * (division + 1) + i;
-                    GLuint bottomRight = bottomLeft + 1;
-
-                    // Triangle 1
-                    elements.push_back(topLeft);
-                    elements.push_back(bottomLeft);
-                    elements.push_back(topRight);
-
-                    // Triangle 2
-                    elements.push_back(topRight);
-                    elements.push_back(bottomLeft);
-                    elements.push_back(bottomRight);
-                }
-            }
-
-            // Generate and bind VAO and VBOs
-            this->plane = new VAO();
-            this->plane->element_amount = elements.size();
-
-            glGenVertexArrays(1, &this->plane->vao);
-            glGenBuffers(4, this->plane->vbo);
-            glGenBuffers(1, &this->plane->ebo);
-
-            glBindVertexArray(this->plane->vao);
-
-            // Vertex position (use GL_DYNAMIC_DRAW for animated data)
-            glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat),
-                         vertices.data(), GL_DYNAMIC_DRAW);
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                                  (GLvoid*)0);
-            glEnableVertexAttribArray(0);
-
-            // Normals (use GL_DYNAMIC_DRAW for animated data)
-            glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-            glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(GLfloat),
-                         normals.data(), GL_DYNAMIC_DRAW);
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                                  (GLvoid*)0);
-            glEnableVertexAttribArray(1);
-
-            // Texture coordinates
-            glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-            glBufferData(GL_ARRAY_BUFFER,
-                         textureCoordinates.size() * sizeof(GLfloat),
-                         textureCoordinates.data(), GL_STATIC_DRAW);
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                                  (GLvoid*)0);
-            glEnableVertexAttribArray(2);
-
-            // Colors (use GL_DYNAMIC_DRAW for animated data)
-            glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-            glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(GLfloat),
-                         colors.data(), GL_DYNAMIC_DRAW);
-            glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                                  (GLvoid*)0);
-            glEnableVertexAttribArray(3);
-
-            // Element indices
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER,
-                         elements.size() * sizeof(GLuint), elements.data(),
-                         GL_STATIC_DRAW);
-
-            // Unbind VAO
-            glBindVertexArray(0);
-        }
-
-        // Triangle
-        // if (!this->plane) {
-        //     // Equilateral triangle - centered at origin
-        //     GLfloat vertices[] = { -0.5f, 0.0f, -sqrt(3.0f) / 6.0f,
-        //                            0.5f,  0.0f, -sqrt(3.0f) / 6.0f,
-        //                            0.0f,  0.0f, sqrt(3.0f) / 3.0f };
-
-        //     GLfloat normal[] = {
-        //         0.0f, 0.0f, 1.0f,
-        //         0.0f, 0.0f, 1.0f,
-        //         0.0f, 0.0f, 1.0f
-        //     };
-
-        //     GLfloat texture_coordinate[] = {
-        //         0.0f, 0.0f,
-        //         1.0f, 0.0f,
-        //         0.5f, 1.0f
-        //     };
-
-        //     GLuint element[] = { 0, 1, 2 };
-
-        //     GLfloat colors[] = {
-        //         1.0f, 0.0f, 0.0f,   // Red
-        //         0.0f, 1.0f, 0.0f,   // Green
-        //         0.0f, 0.0f, 1.0f    // Blue
-        //     };
-
-        //     this->plane = new VAO();
-        //     this->plane->element_amount = sizeof(element) / sizeof(GLuint);
-        //     glGenVertexArrays(1, &this->plane->vao);
-        //     glGenBuffers(4, this->plane->vbo);  // Changed to 4 for color buffer
-        //     glGenBuffers(1, &this->plane->ebo);
-
-        //     glBindVertexArray(this->plane->vao);
-
-        //     // Position attribute
-        //     glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
-        //                  GL_STATIC_DRAW);
-        //     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-        //                           (GLvoid*)0);
-        //     glEnableVertexAttribArray(0);
-
-        //     // Normal attribute
-        //     glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(normal), normal,
-        //                  GL_STATIC_DRAW);
-        //     glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-        //                           (GLvoid*)0);
-        //     glEnableVertexAttribArray(1);
-
-        //     // Texture Coordinate attribute
-        //     glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(texture_coordinate),
-        //                  texture_coordinate, GL_STATIC_DRAW);
-        //     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-        //                           (GLvoid*)0);
-        //     glEnableVertexAttribArray(2);
-
-        //     // Element attribute
-        //     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-        //     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(element), element,
-        //                  GL_STATIC_DRAW);
-
-        //     // Color attribute
-        //     glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-        //     glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors,
-        //                  GL_STATIC_DRAW);
-        //     glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-        //                           (GLvoid*)0);
-        //     glEnableVertexAttribArray(3);
-
-        //     // Unbind VAO
-        //     glBindVertexArray(0);
-        // }
-
-        if (!this->texture) {
-            // this->texture = new Texture2D("./images/church.png");
-            this->texture = new Texture2D("./images/waterHeightMap.jpg");
-        }
     } else {
         throw std::runtime_error("Could not initialize GLAD!");
     }
@@ -724,114 +291,7 @@ void TrainView::draw() {
     glLoadIdentity();
     setProjection();  // put the code to set up matrices here
 
-    // ######################################################################
-    //  TODO:
-    //  you might want to set the lighting up differently. if you do,
-    //  we need to set up the lights AFTER setting up the projection
-    // ######################################################################
-
-    // enable the lighting
-    glEnable(GL_COLOR_MATERIAL);
-    glEnable(GL_DEPTH_TEST);
-    glEnable(GL_LIGHTING);
-    glEnable(GL_NORMALIZE);
-    glEnable(GL_LIGHT0);
-
-    // top view only needs one light
-    if (tw->topCam->value()) {
-        glDisable(GL_LIGHT1);
-        glDisable(GL_LIGHT2);
-    } else {
-        glEnable(GL_LIGHT1);
-        // glEnable(GL_LIGHT2);
-    }
-
-    //*********************************************************************
-    //
-    // * set the light parameters
-    //
-    //**********************************************************************
-    // GLfloat lightPosition1[]	= {0,1,1,0}; // {50, 200.0, 50, 1.0};
-    // GLfloat lightPosition2[]	= {1, 0, 0, 0};
-    // GLfloat lightPosition3[]	= {0, -1, 0, 0};
-    // GLfloat yellowLight[]		= {0.5f, 0.5f, .1f, 1.0};
-    // GLfloat whiteLight[]	 	= {1.0f, 1.0f, 1.0f, 1.0};
-    // GLfloat blueLight[]			= {.1f,.1f,.3f,1.0};
-    // GLfloat grayLight[]			= {.3f, .3f, .3f, 1.0};
-
-    // glLightfv(GL_LIGHT0, GL_POSITION, lightPosition1);
-    // glLightfv(GL_LIGHT0, GL_DIFFUSE, whiteLight);
-    // glLightfv(GL_LIGHT0, GL_AMBIENT, grayLight);
-
-    // glLightfv(GL_LIGHT1, GL_POSITION, lightPosition2);
-    // glLightfv(GL_LIGHT1, GL_DIFFUSE, yellowLight);
-
-    // glLightfv(GL_LIGHT2, GL_POSITION, lightPosition3);
-    // glLightfv(GL_LIGHT2, GL_DIFFUSE, blueLight);
-
-    // *********************************************************************
-    // Directional light setup
-    float noAmbient[] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    float directionalDiffuse[] = { 0.2f, 0.2f, 0.8f, 1.0f };
-
-    /*
-     * Directional light source (w = 0)
-     * The light source is at an infinite distance,
-     * all the ray are parallel and have the direction (x, y, z).
-     */
-    float directionalLightPosition[] = { 1.0f, 1.0f, 1.0f, 0.0f };
-    glLightfv(GL_LIGHT0, GL_AMBIENT, noAmbient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, directionalDiffuse);
-    glLightfv(GL_LIGHT0, GL_POSITION, directionalLightPosition);
-
-    // *********************************************************************
-    // Point light setup — tie to a control point (follows its movement)
-    float pointAmbient[] = { 0.02f, 0.02f, 0.05f, 1.0f };
-    float pointDiffuse[] = { 1.0f, 0.2f, 0.2f, 1.0f };
-
-    // Pick which control point drives the light: selected if any, otherwise 0
-    Pnt3f lightPosCP(10.0f, 10.0f, 10.0f);
-    Pnt3f lightDirCP(0.0f, -1.0f, 0.0f);
-    if (!m_pTrack->points.empty()) {
-        int idx =
-            (selectedCube >= 0 && selectedCube < (int)m_pTrack->points.size())
-                ? selectedCube
-                : 0;
-        lightPosCP = m_pTrack->points[(size_t)idx].pos;
-        lightDirCP = m_pTrack->points[(size_t)idx].orient;
-        lightDirCP.normalize();
-    }
-    float pointLightPosition[] = { lightPosCP.x, lightPosCP.y, lightPosCP.z,
-                                   1.0f };
-    glLightfv(GL_LIGHT1, GL_AMBIENT, pointAmbient);
-    glLightfv(GL_LIGHT1, GL_DIFFUSE, pointDiffuse);
-    glLightfv(GL_LIGHT1, GL_POSITION, pointLightPosition);
-
-    // *********************************************************************
-    // // Spot light setup
-    // float noAmbient[] = {0.0f, 0.0f, 0.2f, 1.0f}; //low ambient light
-    // float diffuse[] = {0.0f, 0.0f, 1.0f, 1.0f};
-    // float position[] = {0.0f, 0.0f, 0.0f, 1.0f};
-
-    // //properties of the light
-    // glLightfv(GL_LIGHT2, GL_AMBIENT, noAmbient);
-    // glLightfv(GL_LIGHT2, GL_DIFFUSE, diffuse);
-    // glLightfv(GL_LIGHT2, GL_POSITION, position);
-
-    // /*Spot properties*/
-    // //spot direction
-    // float direction[] = {5.0f, 8.0f, 1.0f};
-    // glLightfv(GL_LIGHT2, GL_SPOT_DIRECTION, direction);
-    // //angle of the cone light emitted by the spot : value between 0 to 180
-    // float spotCutOff = 45;
-    // glLightf(GL_LIGHT2, GL_SPOT_CUTOFF, spotCutOff);
-
-    // //exponent propertie defines the concentration of the light
-    // glLightf(GL_LIGHT2, GL_SPOT_EXPONENT, 15.0f);
-    // //light attenuation (default values used here : no attenuation with the
-    // distance) glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 1.0f);
-    // glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.0f);
-    // glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.0f);
+    setLighting();
 
     //*********************************************************************
     // now draw the ground plane
@@ -858,41 +318,6 @@ void TrainView::draw() {
         drawStuff(true);
         unsetupShadows();
     }
-
-    // *********************************************************************
-    // draw a simple textured plane
-    setUBO();
-    glBindBufferRange(GL_UNIFORM_BUFFER, /*binding point*/ 0,
-                      this->common_matrices->ubo, 0,
-                      this->common_matrices->size);
-
-    waveTime += 0.016f;  // Update wave animation time (approximately 60 FPS)
-    updateWave(100);     // Update wave vertices with new time
-
-    this->shader->Use();  // Bind shader
-
-    glm::mat4 model_matrix = glm::mat4();
-    model_matrix = glm::translate(model_matrix, glm::vec3(0, 10.0f, 0.0f));
-    model_matrix = glm::scale(model_matrix, glm::vec3(10.0f, 10.0f, 10.0f));
-    glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
-                       1, GL_FALSE, &model_matrix[0][0]);
-    glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
-                 &glm::vec3(0.5f, 0.0f, 0.0f)[0]);
-
-    this->texture->bind(0);
-    glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"), 0);
-
-    // bind VAO
-    glBindVertexArray(this->plane->vao);
-
-    glDrawElements(GL_TRIANGLES, this->plane->element_amount, GL_UNSIGNED_INT,
-                   0);
-
-    // unbind VAO
-    glBindVertexArray(0);
-
-    // unbind shader(switch to fixed pipeline)
-    glUseProgram(0);
 }
 
 //************************************************************************
@@ -948,10 +373,6 @@ void TrainView::setProjection()
 //	NOTE: if you're drawing shadows, DO NOT set colors (otherwise, you get
 //       colored shadows). this gets called twice per draw
 //       -- once for the objects, once for the shadows
-// ########################################################################
-// TODO:
-// if you have other objects in the world, make sure to draw them
-// ########################################################################
 //========================================================================
 void TrainView::drawStuff(bool doingShadows) {
     // Draw the control points
@@ -984,6 +405,170 @@ void TrainView::drawStuff(bool doingShadows) {
     if (!tw->trainCam->value())
         drawTrain(this, doingShadows);
 #endif
+}
+
+size_t TrainView::wrapIndex(int index, size_t count) {
+    if (count == 0)
+        return 0;
+    int wrapped = index % static_cast<int>(count);
+    if (wrapped < 0)
+        wrapped += static_cast<int>(count);
+    return static_cast<size_t>(wrapped);
+}
+
+Pnt3f TrainView::evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1,
+                                  const Pnt3f& p2, const Pnt3f& p3, float t) {
+    const float tension = 0.0f;
+    const float factor = (1.0f - tension) * 0.5f;
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
+    const float h10 = t3 - 2.0f * t2 + t;
+    const float h01 = -2.0f * t3 + 3.0f * t2;
+    const float h11 = t3 - t2;
+    Pnt3f m1 = (p2 - p0) * factor;
+    Pnt3f m2 = (p3 - p1) * factor;
+    return p1 * h00 + m1 * h10 + p2 * h01 + m2 * h11;
+}
+
+Pnt3f TrainView::evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1,
+                                 const Pnt3f& p2, const Pnt3f& p3, float t) {
+    const float t2 = t * t;
+    const float t3 = t2 * t;
+    const float sixth = 1.0f / 6.0f;
+    const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
+    const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
+    const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
+    const float b3 = t3 * sixth;
+    return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
+}
+
+Pnt3f TrainView::evaluateSplinePosition(const std::vector<ControlPoint>& points,
+                                        int mode, size_t segmentIdx, float t) {
+    const size_t pointCount = points.size();
+    if (pointCount == 0)
+        return Pnt3f(0, 0, 0);
+
+    if (mode == 1) {
+        const Pnt3f& p0 = points[segmentIdx % pointCount].pos;
+        const Pnt3f& p1 = points[(segmentIdx + 1) % pointCount].pos;
+        return (1.0f - t) * p0 + t * p1;
+    }
+
+    size_t prev =
+        TrainView::wrapIndex(static_cast<int>(segmentIdx) - 1, pointCount);
+    size_t next = (segmentIdx + 1) % pointCount;
+    size_t next2 = (segmentIdx + 2) % pointCount;
+
+    const Pnt3f& p0 = points[prev].pos;
+    const Pnt3f& p1 = points[segmentIdx].pos;
+    const Pnt3f& p2 = points[next].pos;
+    const Pnt3f& p3 = points[next2].pos;
+
+    if (mode == 2)
+        return TrainView::evaluateCardinal(p0, p1, p2, p3, t);
+    return TrainView::evaluateBSpline(p0, p1, p2, p3, t);
+}
+
+TrainView::ArcLengthData TrainView::buildArcLengthData(
+    const std::vector<ControlPoint>& points, int mode) {
+    ArcLengthData data;
+    const size_t pointCount = points.size();
+    if ((mode == 1 && pointCount < 2) || (mode != 1 && pointCount < 4))
+        return data;
+
+    data.segmentCount = pointCount;
+    data.segOffset.assign(pointCount + 1, 0.0f);
+    data.cumLen.assign(pointCount,
+                       std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+    data.tSamples.assign(
+        pointCount, std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+
+    for (size_t si = 0; si < pointCount; ++si) {
+        Pnt3f prevPos =
+            TrainView::evaluateSplinePosition(points, mode, si, 0.0f);
+        for (int sample = 1; sample <= TrainView::ARCLEN_SAMPLES; ++sample) {
+            float t = static_cast<float>(sample) / TrainView::ARCLEN_SAMPLES;
+            data.tSamples[si][sample] = t;
+            Pnt3f current =
+                TrainView::evaluateSplinePosition(points, mode, si, t);
+            Pnt3f diff = current - prevPos;
+            float dist =
+                std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
+            data.cumLen[si][sample] = data.cumLen[si][sample - 1] + dist;
+            prevPos = current;
+        }
+        float segmentLength = data.cumLen[si][TrainView::ARCLEN_SAMPLES];
+        data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
+    }
+    data.totalLen = data.segOffset.back();
+    return data;
+}
+
+void TrainView::mapLengthToSegment(const ArcLengthData& data, float s,
+                                   size_t& segment, float& outT) {
+    if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
+        segment = 0;
+        outT = 0.0f;
+        return;
+    }
+
+    float clamped = s;
+    if (clamped <= 0.0f) {
+        segment = 0;
+        outT = 0.0f;
+        return;
+    }
+    if (clamped >= data.totalLen) {
+        segment = data.segmentCount - 1;
+        outT = 1.0f;
+        return;
+    }
+
+    size_t lo = 0;
+    size_t hi = data.segmentCount;
+    while (lo + 1 < hi) {
+        size_t mid = (lo + hi) / 2;
+        if (data.segOffset[mid] <= clamped)
+            lo = mid;
+        else
+            hi = mid;
+    }
+    segment = lo;
+    float localLength = clamped - data.segOffset[segment];
+    float segmentLength = data.segOffset[segment + 1] - data.segOffset[segment];
+    if (segmentLength <= 1e-6f) {
+        outT = 0.0f;
+        return;
+    }
+
+    const auto& cum = data.cumLen[segment];
+    const auto& ts = data.tSamples[segment];
+    int loI = 0;
+    int hiI = TrainView::ARCLEN_SAMPLES;
+    while (loI < hiI) {
+        int mid = (loI + hiI) / 2;
+        if (cum[mid] < localLength)
+            loI = mid + 1;
+        else
+            hiI = mid;
+    }
+    int idx =
+        (loI < TrainView::ARCLEN_SAMPLES) ? loI : TrainView::ARCLEN_SAMPLES;
+    int prevIdx = (idx > 0) ? idx - 1 : 0;
+    float s0 = cum[prevIdx];
+    float s1 = cum[idx];
+    float t0 = ts[prevIdx];
+    float t1 = ts[idx];
+    float tau = 0.0f;
+    float denom = s1 - s0;
+    if (denom > 1e-6f)
+        tau = (localLength - s0) / denom;
+    if (tau < 0.0f)
+        tau = 0.0f;
+    else if (tau > 1.0f)
+        tau = 1.0f;
+    outT = t0 + tau * (t1 - t0);
 }
 
 void TrainView::drawTrack(bool doingShadows) {
@@ -1198,8 +783,8 @@ void TrainView::drawTrack(bool doingShadows) {
                     };
                     resampledCenters[sample] = lerpPoint(
                         trackCenters[baseIdx], trackCenters[nextIdx], alpha);
-                    resampledUps[sample] =
-                        lerpPoint(upVectors[baseIdx], upVectors[nextIdx], alpha);
+                    resampledUps[sample] = lerpPoint(upVectors[baseIdx],
+                                                     upVectors[nextIdx], alpha);
                 }
 
                 std::vector<Pnt3f> resampledTangents(sampleCount);
@@ -1410,24 +995,17 @@ void TrainView::drawTrain(bool doingShadows) {
     float localT = wrappedParam - std::floor(wrappedParam);
 
     if (tw->arcLength && tw->arcLength->value()) {
-        ArcLengthData arcData =
-            buildArcLengthData(m_pTrack->points, tw->splineBrowser->value());
+        TrainView::ArcLengthData arcData = TrainView::buildArcLengthData(
+            m_pTrack->points, tw->splineBrowser->value());
         if (arcData.totalLen > 1e-6f) {
             float normalized = wrappedParam / static_cast<float>(pointCount);
             if (normalized < 0.0f)
                 normalized += 1.0f;
             float targetLength = normalized * arcData.totalLen;
-            mapLengthToSegment(arcData, targetLength, segmentIndex, localT);
+            TrainView::mapLengthToSegment(arcData, targetLength, segmentIndex,
+                                          localT);
         }
     }
-
-    auto wrapIndex = [pointCount](int index) {
-        int wrapped = index % static_cast<int>(pointCount);
-        if (wrapped < 0) {
-            wrapped += static_cast<int>(pointCount);
-        }
-        return static_cast<size_t>(wrapped);
-    };
 
     Pnt3f position;
     Pnt3f tangent;
@@ -1435,8 +1013,8 @@ void TrainView::drawTrain(bool doingShadows) {
 
     if (tw->splineBrowser->value() == 1) {
         const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
+        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) + 1, pointCount)];
 
         position = (1.0f - localT) * cp1.pos + localT * cp2.pos;
         up = (1.0f - localT) * cp1.orient + localT * cp2.orient;
@@ -1451,13 +1029,13 @@ void TrainView::drawTrain(bool doingShadows) {
             tangent = Pnt3f(0.0f, 0.0f, 1.0f);
         }
     } else if (tw->splineBrowser->value() == 2) {
-        const ControlPoint& cp0 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) - 1)];
+        const ControlPoint& cp0 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) - 1, pointCount)];
         const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
-        const ControlPoint& cp3 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 2)];
+        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) + 1, pointCount)];
+        const ControlPoint& cp3 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) + 2, pointCount)];
 
         const float tension = 0.0f;
         const float tensionFactor = (1.0f - tension) * 0.5f;
@@ -1493,13 +1071,13 @@ void TrainView::drawTrain(bool doingShadows) {
             tangent = Pnt3f(0.0f, 0.0f, 1.0f);
         }
     } else {
-        const ControlPoint& cp0 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) - 1)];
+        const ControlPoint& cp0 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) - 1, pointCount)];
         const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 1)];
-        const ControlPoint& cp3 =
-            m_pTrack->points[wrapIndex(static_cast<int>(segmentIndex) + 2)];
+        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) + 1, pointCount)];
+        const ControlPoint& cp3 = m_pTrack->points[TrainView::wrapIndex(
+            static_cast<int>(segmentIndex) + 2, pointCount)];
 
         const float t2 = localT * localT;
         const float t3 = t2 * localT;
@@ -1547,6 +1125,9 @@ void TrainView::drawTrain(bool doingShadows) {
 
     up = right * tangent;
     up.normalize();
+
+    trainPosition = position;
+    trainForward = tangent;
 
     const float halfExtent = 5.0f;
     Pnt3f halfForward = tangent * halfExtent;
