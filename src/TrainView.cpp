@@ -48,6 +48,7 @@ references)
 #endif
 
 #define DIVIDE_LINE 1000.0f
+#define GUAGE 5.0f
 
 void TrainView::setUBO() {
     float wdt = this->pixel_w();
@@ -813,893 +814,319 @@ void TrainView::drawStuff(bool doingShadows) {
 }
 
 void TrainView::drawTrack(bool doingShadows) {
-    // If global arc-length mode is enabled, build a global s->(segment,t)
-    // mapping and draw with uniform spacing along the full track length.
-    if (tw->arcLength->value() == 1) {
-        const size_t pointCount = m_pTrack->points.size();
-        if (pointCount == 0)
-            return;
+    const size_t pointCount = m_pTrack->points.size();
+    if (pointCount < 2)
+        return;
 
-        // Helper for wrapping indices in closed loop
-        auto wrapIndex = [pointCount](int index) {
-            int wrapped = index % static_cast<int>(pointCount);
-            if (wrapped < 0)
-                wrapped += static_cast<int>(pointCount);
-            return static_cast<size_t>(wrapped);
-        };
+    float M[4][4] = { 0 };
 
-        // Build per-spline evaluators: position and orientation as a function of
-        // segment index and local t in [0,1]
-        const int mode =
-            tw->splineBrowser
-                ->value();  // 1: Linear, 2: Cardinal, else: B-Spline
-
-        // Cardinal helpers
-        auto evaluateCardinal = [](const Pnt3f& p0, const Pnt3f& p1,
-                                   const Pnt3f& p2, const Pnt3f& p3, float t) {
-            const float tension = 0.0f;  // Catmull-Rom
-            const float tf = (1.0f - tension) * 0.5f;
-            const float t2 = t * t;
-            const float t3 = t2 * t;
-            const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
-            const float h10 = t3 - 2.0f * t2 + t;
-            const float h01 = -2.0f * t3 + 3.0f * t2;
-            const float h11 = t3 - t2;
-            Pnt3f m1 = (p2 - p0) * tf;
-            Pnt3f m2 = (p3 - p1) * tf;
-            return p1 * h00 + m1 * h10 + p2 * h01 + m2 * h11;
-        };
-
-        // B-spline helper
-        auto evaluateBSpline = [](const Pnt3f& p0, const Pnt3f& p1,
-                                  const Pnt3f& p2, const Pnt3f& p3, float t) {
-            const float t2 = t * t;
-            const float t3 = t2 * t;
-            const float sixth = 1.0f / 6.0f;
-            const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
-            const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
-            const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
-            const float b3 = t3 * sixth;
-            return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
-        };
-
-        // Position evaluator
-        auto evalPos = [&](size_t segIdx, float t) -> Pnt3f {
-            if (mode == 1) {
-                const Pnt3f& p0 = m_pTrack->points[segIdx].pos;
-                const Pnt3f& p1 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].pos;
-                return (1.0f - t) * p0 + t * p1;
-            } else if (mode == 2) {
-                const Pnt3f& p0 =
-                    m_pTrack->points[wrapIndex(static_cast<int>(segIdx) - 1)]
-                        .pos;
-                const Pnt3f& p1 = m_pTrack->points[segIdx].pos;
-                const Pnt3f& p2 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].pos;
-                const Pnt3f& p3 =
-                    m_pTrack->points[(segIdx + 2) % pointCount].pos;
-                return evaluateCardinal(p0, p1, p2, p3, t);
-            } else {
-                const Pnt3f& p0 =
-                    m_pTrack->points[wrapIndex(static_cast<int>(segIdx) - 1)]
-                        .pos;
-                const Pnt3f& p1 = m_pTrack->points[segIdx].pos;
-                const Pnt3f& p2 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].pos;
-                const Pnt3f& p3 =
-                    m_pTrack->points[(segIdx + 2) % pointCount].pos;
-                return evaluateBSpline(p0, p1, p2, p3, t);
-            }
-        };
-
-        // Orientation evaluator (normalized)
-        auto evalOrient = [&](size_t segIdx, float t) -> Pnt3f {
-            Pnt3f o;
-            if (mode == 1) {
-                const Pnt3f& o0 = m_pTrack->points[segIdx].orient;
-                const Pnt3f& o1 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].orient;
-                o = (1.0f - t) * o0 + t * o1;
-            } else if (mode == 2) {
-                const Pnt3f& o0 =
-                    m_pTrack->points[wrapIndex(static_cast<int>(segIdx) - 1)]
-                        .orient;
-                const Pnt3f& o1 = m_pTrack->points[segIdx].orient;
-                const Pnt3f& o2 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].orient;
-                const Pnt3f& o3 =
-                    m_pTrack->points[(segIdx + 2) % pointCount].orient;
-                o = evaluateCardinal(o0, o1, o2, o3, t);
-            } else {
-                const Pnt3f& o0 =
-                    m_pTrack->points[wrapIndex(static_cast<int>(segIdx) - 1)]
-                        .orient;
-                const Pnt3f& o1 = m_pTrack->points[segIdx].orient;
-                const Pnt3f& o2 =
-                    m_pTrack->points[(segIdx + 1) % pointCount].orient;
-                const Pnt3f& o3 =
-                    m_pTrack->points[(segIdx + 2) % pointCount].orient;
-                o = evaluateBSpline(o0, o1, o2, o3, t);
-            }
-            o.normalize();
-            return o;
-        };
-
-        // Check minimum control points per mode
-        if (mode == 1 && pointCount < 2)
-            return;
-        if ((mode == 2 || mode != 1) && pointCount < 4)
-            return;
-
-        // Build per-segment arc-length lookup tables
-        const int ARCLEN_SAMPLES = 100;
-        std::vector<float> segLen(pointCount, 0.0f);
-        std::vector<std::vector<float>> segCumLen(
-            pointCount, std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
-        std::vector<std::vector<float>> segTSamples(
-            pointCount, std::vector<float>(ARCLEN_SAMPLES + 1, 0.0f));
-
-        for (size_t si = 0; si < pointCount; ++si) {
-            segTSamples[si][0] = 0.0f;
-            segCumLen[si][0] = 0.0f;
-            Pnt3f prev = evalPos(si, 0.0f);
-            for (int k = 1; k <= ARCLEN_SAMPLES; ++k) {
-                float t = static_cast<float>(k) / ARCLEN_SAMPLES;
-                segTSamples[si][k] = t;
-                Pnt3f cur = evalPos(si, t);
-                Pnt3f d = cur - prev;
-                float dl = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-                segCumLen[si][k] = segCumLen[si][k - 1] + dl;
-                prev = cur;
-            }
-            segLen[si] = segCumLen[si][ARCLEN_SAMPLES];
-        }
-
-        // Global segment offsets and total length
-        std::vector<float> segOffset(pointCount + 1, 0.0f);
-        for (size_t i = 0; i < pointCount; ++i)
-            segOffset[i + 1] = segOffset[i] + segLen[i];
-        float totalLen = segOffset[pointCount];
-        if (totalLen <= 1e-6f)
-            return;  // degenerate
-
-        // Helper: map global s in [0,totalLen] to (segIdx, t)
-        auto sToSegT = [&](float s, size_t& outSegIdx, float& outT) {
-            // clamp
-            if (s <= 0.0f) {
-                outSegIdx = 0;
-                outT = 0.0f;
-                return;
-            }
-            if (s >= totalLen) {
-                outSegIdx = pointCount - 1;
-                outT = 1.0f;
-                return;
-            }
-
-            // find segment by binary search on segOffset
-            size_t lo = 0, hi = pointCount;
-            while (lo + 1 < hi) {
-                size_t mid = (lo + hi) / 2;
-                if (segOffset[mid] <= s)
-                    lo = mid;
-                else
-                    hi = mid;
-            }
-            outSegIdx = lo;
-            float sLocal = s - segOffset[outSegIdx];
-            float segTotal = segLen[outSegIdx];
-            if (segTotal <= 1e-6f) {
-                outT = 0.0f;
-                return;
-            }
-
-            // within segment: binary search over cumLen to find t
-            const auto& cum = segCumLen[outSegIdx];
-            const auto& ts = segTSamples[outSegIdx];
-            int loI = 0, hiI = ARCLEN_SAMPLES;
-            while (loI < hiI) {
-                int mid = (loI + hiI) / 2;
-                if (cum[mid] < sLocal)
-                    loI = mid + 1;
-                else
-                    hiI = mid;
-            }
-            int idx = (loI < ARCLEN_SAMPLES ? loI : ARCLEN_SAMPLES);
-            int i0 = (idx > 0 ? idx - 1 : 0);
-            float s0 = cum[i0], s1 = cum[idx];
-            float t0 = ts[i0], t1 = ts[idx];
-            float denom = (s1 - s0);
-            float a = denom > 1e-6f ? (sLocal - s0) / denom : 0.0f;
-            outT = t0 + a * (t1 - t0);
-        };
-
-        // Total samples around the loop to match previous density
-        const size_t totalSamples =
-            pointCount * static_cast<size_t>(DIVIDE_LINE);
-        if (totalSamples < 2)
-            return;
-        size_t tieEvery = totalSamples / (pointCount * 10);
-        if (tieEvery < 1)
-            tieEvery = 1;
-
-        // March uniformly in s and draw
-        size_t segIdx0 = 0;
-        float t0 = 0.0f;
-        sToSegT(0.0f, segIdx0, t0);
-        Pnt3f prev = evalPos(segIdx0, t0);
-        for (size_t j = 1; j <= totalSamples; ++j) {
-            float sTarget =
-                (static_cast<float>(j) / static_cast<float>(totalSamples)) *
-                totalLen;
-            size_t segIdx;
-            float t;
-            sToSegT(sTarget, segIdx, t);
-            Pnt3f curr = evalPos(segIdx, t);
-            Pnt3f curOrient = evalOrient(segIdx, t);
-            Pnt3f segDir = curr - prev;
-            segDir.normalize();
-            Pnt3f cross = segDir * curOrient;
-            cross.normalize();
-            cross = cross * 2.5f;
-
-            // Rails
-            glLineWidth(3);
-            glBegin(GL_LINES);
-            if (!doingShadows)
-                glColor3ub(41, 42, 47);
-            glVertex3f(prev.x + cross.x, prev.y + cross.y, prev.z + cross.z);
-            glVertex3f(curr.x + cross.x, curr.y + cross.y, curr.z + cross.z);
-            glVertex3f(prev.x - cross.x, prev.y - cross.y, prev.z - cross.z);
-            glVertex3f(curr.x - cross.x, curr.y - cross.y, curr.z - cross.z);
-            glEnd();
-            glLineWidth(1);
-
-            // Ties at regular global spacing
-            if (j % tieEvery == 0) {
-                Pnt3f tieCenter = (prev + curr) * 0.5f;
-                Pnt3f halfTieThickness = segDir * 0.75f;
-                Pnt3f tieHalfWidth = cross * 1.5f;
-                Pnt3f tieRight = tieCenter + tieHalfWidth;
-                Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                Pnt3f tieFR = tieRight + halfTieThickness;
-                Pnt3f tieBR = tieRight - halfTieThickness;
-                Pnt3f tieFL = tieLeft + halfTieThickness;
-                Pnt3f tieBL = tieLeft - halfTieThickness;
-                if (!doingShadows)
-                    glColor3ub(94, 72, 44);
-                glBegin(GL_QUADS);
-                glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                glEnd();
-            }
-
-            prev = curr;
-        }
-
-        return;  // Done with global arc-length path
-    }
     if (tw->splineBrowser->value() == 1) {
         // Linear
-        const size_t pointCount = m_pTrack->points.size();
-        if (pointCount == 0)
-            return;
-
-        // Precompute per-segment lengths and average length (for arc-length
-        // sampling)
-        float totalSegLen = 0.0f;
-        std::vector<float> segLens(pointCount, 0.0f);
-        for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
-            const Pnt3f& p0 = m_pTrack->points[pointIndex].pos;
-            const Pnt3f& p1 =
-                m_pTrack->points[(pointIndex + 1) % pointCount].pos;
-            Pnt3f d = p1 - p0;
-            float len = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-            segLens[pointIndex] = len;
-            totalSegLen += len;
-        }
-        float avgSegLen = (pointCount > 0)
-                              ? (totalSegLen / static_cast<float>(pointCount))
-                              : 1.0f;
-        if (avgSegLen < 1e-6f)
-            avgSegLen = 1.0f;
-
-        for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
-            Pnt3f p0 = m_pTrack->points[pointIndex].pos;
-            Pnt3f p1 = m_pTrack->points[(pointIndex + 1) % pointCount].pos;
-            Pnt3f o0 = m_pTrack->points[pointIndex].orient;
-            Pnt3f o1 = m_pTrack->points[(pointIndex + 1) % pointCount].orient;
-
-            auto evalPos = [&](float t) {
-                return (1.0f - t) * p0 + t * p1;
-            };
-            auto evalOrient = [&](float t) {
-                Pnt3f o = (1.0f - t) * o0 + t * o1;
-                o.normalize();
-                return o;
-            };
-
-            if (!(tw->arcLength->value() == 1)) {
-                float step = 1.0f / DIVIDE_LINE;
-                float t = 0.0f;
-                Pnt3f currentPos = evalPos(t);
-                for (size_t i = 0; i < DIVIDE_LINE; ++i) {
-                    Pnt3f prev = currentPos;
-                    t += step;
-                    currentPos = evalPos(t);
-                    Pnt3f nextPos = currentPos;
-                    Pnt3f curOrient = evalOrient(t);
-                    Pnt3f segDir = currentPos - prev;
-                    segDir.normalize();
-                    Pnt3f cross = segDir * curOrient;
-                    cross.normalize();
-                    cross = cross * 2.5f;
-
-                    glLineWidth(3);
-                    glBegin(GL_LINES);
-                    if (!doingShadows)
-                        glColor3ub(41, 42, 47);
-                    glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                               prev.z + cross.z);
-                    glVertex3f(currentPos.x + cross.x, currentPos.y + cross.y,
-                               currentPos.z + cross.z);
-                    glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                               prev.z - cross.z);
-                    glVertex3f(currentPos.x - cross.x, currentPos.y - cross.y,
-                               currentPos.z - cross.z);
-                    glEnd();
-                    glLineWidth(1);
-
-                    if (i % static_cast<size_t>(DIVIDE_LINE / 10) == 0) {
-                        Pnt3f tieCenter = (prev + nextPos) * 0.5f;
-                        Pnt3f halfTieThickness = segDir * 0.75f;
-                        Pnt3f tieHalfWidth = cross * 1.5f;
-                        Pnt3f tieRight = tieCenter + tieHalfWidth;
-                        Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                        Pnt3f tieFR = tieRight + halfTieThickness;
-                        Pnt3f tieBR = tieRight - halfTieThickness;
-                        Pnt3f tieFL = tieLeft + halfTieThickness;
-                        Pnt3f tieBL = tieLeft - halfTieThickness;
-                        if (!doingShadows)
-                            glColor3ub(94, 72, 44);
-                        glBegin(GL_QUADS);
-                        glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                        glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                        glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                        glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                        glEnd();
-                    }
-                }
-            } else {
-                // Distribute samples for this straight segment proportional to its
-                // length
-                float segLen = segLens[pointIndex];
-                size_t samplesThisSeg = static_cast<size_t>(
-                    std::floor((segLen / avgSegLen) * DIVIDE_LINE + 0.5f));
-                if (samplesThisSeg < 1)
-                    samplesThisSeg = 1;
-                size_t tieEvery = samplesThisSeg / 10;
-                if (tieEvery < 1)
-                    tieEvery = 1;
-
-                Pnt3f prev = evalPos(0.0f);
-                for (size_t i = 0; i < samplesThisSeg; ++i) {
-                    // For linear, parameter t is proportional to arc length: t = s
-                    float tCurr = static_cast<float>(i + 1) /
-                                  static_cast<float>(samplesThisSeg);
-                    Pnt3f curr = evalPos(tCurr);
-                    Pnt3f curOrient = evalOrient(tCurr);
-                    Pnt3f segDir = curr - prev;
-                    segDir.normalize();
-                    Pnt3f cross = segDir * curOrient;
-                    cross.normalize();
-                    cross = cross * 2.5f;
-
-                    glLineWidth(3);
-                    glBegin(GL_LINES);
-                    if (!doingShadows)
-                        glColor3ub(41, 42, 47);
-                    glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                               prev.z + cross.z);
-                    glVertex3f(curr.x + cross.x, curr.y + cross.y,
-                               curr.z + cross.z);
-                    glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                               prev.z - cross.z);
-                    glVertex3f(curr.x - cross.x, curr.y - cross.y,
-                               curr.z - cross.z);
-                    glEnd();
-                    glLineWidth(1);
-
-                    if (i % tieEvery == 0) {
-                        Pnt3f tieCenter = (prev + curr) * 0.5f;
-                        Pnt3f halfTieThickness = segDir * 0.75f;
-                        Pnt3f tieHalfWidth = cross * 1.5f;
-                        Pnt3f tieRight = tieCenter + tieHalfWidth;
-                        Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                        Pnt3f tieFR = tieRight + halfTieThickness;
-                        Pnt3f tieBR = tieRight - halfTieThickness;
-                        Pnt3f tieFL = tieLeft + halfTieThickness;
-                        Pnt3f tieBL = tieLeft - halfTieThickness;
-
-                        if (!doingShadows)
-                            glColor3ub(94, 72, 44);
-                        glBegin(GL_QUADS);
-                        glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                        glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                        glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                        glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                        glEnd();
-                    }
-
-                    prev = curr;
-                }
-            }
-        }
+        M[0][0] = 0.0f;
+        M[0][1] = 0.0f;
+        M[0][2] = -1.0f;
+        M[0][3] = 1.0f;
+        M[1][0] = 0.0f;
+        M[1][1] = 0.0f;
+        M[1][2] = 1.0f;
+        M[1][3] = 0.0f;
+        M[2][0] = 0.0f;
+        M[2][1] = 0.0f;
+        M[2][2] = 0.0f;
+        M[2][3] = 0.0f;
+        M[3][0] = 0.0f;
+        M[3][1] = 0.0f;
+        M[3][2] = 0.0f;
+        M[3][3] = 0.0f;
     } else if (tw->splineBrowser->value() == 2) {
         // Cardinal Cubic
-        const size_t pointCount = m_pTrack->points.size();
-        if (pointCount < 4) {
-            return;
-        }
-
-        const float tension = 0.0f;  // Catmull-Rom (Cardinal with zero tension)
-        const float tensionFactor = (1.0f - tension) * 0.5f;
-
-        auto evaluateCardinal = [tensionFactor](
-                                    const Pnt3f& p0, const Pnt3f& p1,
-                                    const Pnt3f& p2, const Pnt3f& p3, float t) {
-            const float t2 = t * t;
-            const float t3 = t2 * t;
-            const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
-            const float h10 = t3 - 2.0f * t2 + t;
-            const float h01 = -2.0f * t3 + 3.0f * t2;
-            const float h11 = t3 - t2;
-
-            Pnt3f m1 = (p2 - p0) * tensionFactor;
-            Pnt3f m2 = (p3 - p1) * tensionFactor;
-
-            Pnt3f term1 = p1 * h00;
-            Pnt3f term2 = m1 * h10;
-            Pnt3f term3 = p2 * h01;
-            Pnt3f term4 = m2 * h11;
-            return term1 + term2 + term3 + term4;
-        };
-
-        const int ARCLEN_SAMPLES = 100;
-        float totalSegLen = 0.0f;
-        for (size_t pi = 0; pi < pointCount; ++pi) {
-            const ControlPoint& a0 =
-                m_pTrack->points[(pi + pointCount - 1) % pointCount];
-            const ControlPoint& a1 = m_pTrack->points[pi];
-            const ControlPoint& a2 = m_pTrack->points[(pi + 1) % pointCount];
-            const ControlPoint& a3 = m_pTrack->points[(pi + 2) % pointCount];
-            auto segEval = [&](float t) {
-                return evaluateCardinal(a0.pos, a1.pos, a2.pos, a3.pos, t);
-            };
-            Pnt3f prevS = segEval(0.0f);
-            float segLen = 0.0f;
-            for (int k = 1; k <= ARCLEN_SAMPLES; ++k) {
-                float tt = static_cast<float>(k) / ARCLEN_SAMPLES;
-                Pnt3f curS = segEval(tt);
-                Pnt3f d = curS - prevS;
-                segLen += std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-                prevS = curS;
-            }
-            totalSegLen += segLen;
-        }
-        float avgSegLen = (pointCount > 0)
-                              ? (totalSegLen / static_cast<float>(pointCount))
-                              : 1.0f;
-        if (avgSegLen < 1e-6f)
-            avgSegLen = 1.0f;
-
-        for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
-            const ControlPoint& cp0 =
-                m_pTrack->points[(pointIndex + pointCount - 1) % pointCount];
-            const ControlPoint& cp1 = m_pTrack->points[pointIndex];
-            const ControlPoint& cp2 =
-                m_pTrack->points[(pointIndex + 1) % pointCount];
-            const ControlPoint& cp3 =
-                m_pTrack->points[(pointIndex + 2) % pointCount];
-
-            auto evalPos = [&](float t) {
-                return evaluateCardinal(cp0.pos, cp1.pos, cp2.pos, cp3.pos, t);
-            };
-            auto evalOrient = [&](float t) {
-                Pnt3f o = evaluateCardinal(cp0.orient, cp1.orient, cp2.orient,
-                                           cp3.orient, t);
-                o.normalize();
-                return o;
-            };
-
-            if (!(tw->arcLength->value() == 1)) {
-                float step = 1.0f / DIVIDE_LINE;
-                float t = 0.0f;
-                Pnt3f prev = evalPos(0.0f);
-                for (size_t i = 0; i < DIVIDE_LINE; ++i) {
-                    t += step;
-                    if (i + 1 == static_cast<size_t>(DIVIDE_LINE))
-                        t = 1.0f;
-                    Pnt3f curr = evalPos(t);
-                    Pnt3f segDir = curr - prev;
-                    segDir.normalize();
-                    Pnt3f curOrient = evalOrient(t);
-                    Pnt3f cross = segDir * curOrient;
-                    cross.normalize();
-                    cross = cross * 2.5f;
-
-                    glLineWidth(3);
-                    glBegin(GL_LINES);
-                    if (!doingShadows)
-                        glColor3ub(41, 42, 47);
-                    glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                               prev.z + cross.z);
-                    glVertex3f(curr.x + cross.x, curr.y + cross.y,
-                               curr.z + cross.z);
-                    glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                               prev.z - cross.z);
-                    glVertex3f(curr.x - cross.x, curr.y - cross.y,
-                               curr.z - cross.z);
-                    glEnd();
-                    glLineWidth(1);
-
-                    if (i % static_cast<size_t>(DIVIDE_LINE / 10) == 0) {
-                        Pnt3f tieCenter = (prev + curr) * 0.5f;
-                        Pnt3f halfTieThickness = segDir * 0.75f;
-                        Pnt3f tieHalfWidth = cross * 1.5f;
-                        Pnt3f tieRight = tieCenter + tieHalfWidth;
-                        Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                        Pnt3f tieFR = tieRight + halfTieThickness;
-                        Pnt3f tieBR = tieRight - halfTieThickness;
-                        Pnt3f tieFL = tieLeft + halfTieThickness;
-                        Pnt3f tieBL = tieLeft - halfTieThickness;
-                        if (!doingShadows)
-                            glColor3ub(94, 72, 44);
-                        glBegin(GL_QUADS);
-                        glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                        glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                        glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                        glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                        glEnd();
-                    }
-
-                    prev = curr;
-                }
-            } else {
-                float cumLen[ARCLEN_SAMPLES + 1];
-                float tSamples[ARCLEN_SAMPLES + 1];
-                cumLen[0] = 0.0f;
-                tSamples[0] = 0.0f;
-                Pnt3f prevS = evalPos(0.0f);
-                for (int k = 1; k <= ARCLEN_SAMPLES; ++k) {
-                    float t = static_cast<float>(k) / ARCLEN_SAMPLES;
-                    tSamples[k] = t;
-                    Pnt3f curS = evalPos(t);
-                    Pnt3f d = curS - prevS;
-                    float dl = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-                    cumLen[k] = cumLen[k - 1] + dl;
-                    prevS = curS;
-                }
-                float segLen = cumLen[ARCLEN_SAMPLES];
-                size_t samplesThisSeg = static_cast<size_t>(
-                    std::floor((segLen / avgSegLen) * DIVIDE_LINE + 0.5f));
-                if (samplesThisSeg < 1)
-                    samplesThisSeg = 1;
-                size_t tieEvery = samplesThisSeg / 10;
-                if (tieEvery < 1)
-                    tieEvery = 1;
-
-                float totalLen = segLen;
-                auto sToT = [&](float s01) {
-                    if (totalLen <= 1e-6f)
-                        return s01;
-                    float target = s01 * totalLen;
-                    int lo = 0, hi = ARCLEN_SAMPLES;
-                    while (lo < hi) {
-                        int mid = (lo + hi) / 2;
-                        if (cumLen[mid] < target)
-                            lo = mid + 1;
-                        else
-                            hi = mid;
-                    }
-                    int idx = (lo < ARCLEN_SAMPLES ? lo : ARCLEN_SAMPLES);
-                    int i0 = (idx > 0 ? idx - 1 : 0);
-                    float s0 = cumLen[i0], s1 = cumLen[idx];
-                    float t0 = tSamples[i0], t1 = tSamples[idx];
-                    float denom = (s1 - s0);
-                    float a = denom > 1e-6f ? (target - s0) / denom : 0.0f;
-                    return t0 + a * (t1 - t0);
-                };
-
-                Pnt3f prev = evalPos(0.0f);
-                for (size_t i = 0; i < samplesThisSeg; ++i) {
-                    float sPrev = static_cast<float>(i) / samplesThisSeg;
-                    float sCurr = static_cast<float>(i + 1) / samplesThisSeg;
-                    float tPrev = sToT(sPrev);
-                    float tCurr = sToT(sCurr);
-                    Pnt3f curr = evalPos(tCurr);
-                    Pnt3f segDir = curr - prev;
-                    segDir.normalize();
-                    Pnt3f curOrient = evalOrient(tCurr);
-                    Pnt3f cross = segDir * curOrient;
-                    cross.normalize();
-                    cross = cross * 2.5f;
-
-                    glLineWidth(3);
-                    glBegin(GL_LINES);
-                    if (!doingShadows)
-                        glColor3ub(41, 42, 47);
-                    glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                               prev.z + cross.z);
-                    glVertex3f(curr.x + cross.x, curr.y + cross.y,
-                               curr.z + cross.z);
-                    glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                               prev.z - cross.z);
-                    glVertex3f(curr.x - cross.x, curr.y - cross.y,
-                               curr.z - cross.z);
-                    glEnd();
-                    glLineWidth(1);
-
-                    if (i % tieEvery == 0) {
-                        Pnt3f tieCenter = (prev + curr) * 0.5f;
-                        Pnt3f halfTieThickness = segDir * 0.75f;
-                        Pnt3f tieHalfWidth = cross * 1.5f;
-                        Pnt3f tieRight = tieCenter + tieHalfWidth;
-                        Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                        Pnt3f tieFR = tieRight + halfTieThickness;
-                        Pnt3f tieBR = tieRight - halfTieThickness;
-                        Pnt3f tieFL = tieLeft + halfTieThickness;
-                        Pnt3f tieBL = tieLeft - halfTieThickness;
-                        if (!doingShadows)
-                            glColor3ub(94, 72, 44);
-                        glBegin(GL_QUADS);
-                        glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                        glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                        glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                        glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                        glEnd();
-                    }
-
-                    prev = curr;
-                }
-            }
-        }
-
+        M[0][0] = -0.5f;
+        M[0][1] = 1.0f;
+        M[0][2] = -0.5f;
+        M[0][3] = 0.0f;
+        M[1][0] = 1.5f;
+        M[1][1] = -2.5f;
+        M[1][2] = 0.0f;
+        M[1][3] = 1.0f;
+        M[2][0] = -1.5f;
+        M[2][1] = 2.0f;
+        M[2][2] = 0.5f;
+        M[2][3] = 0.0f;
+        M[3][0] = 0.5f;
+        M[3][1] = -0.5f;
+        M[3][2] = 0.0f;
+        M[3][3] = 0.0f;
     } else {
         // B-Spline
-        const size_t pointCount = m_pTrack->points.size();
-        if (pointCount < 4) {
-            return;
-        }
+        M[0][0] = -1.0f / 6.0f;
+        M[0][1] = 0.5f;
+        M[0][2] = -0.5f;
+        M[0][3] = 1.0f / 6.0f;
+        M[1][0] = 0.5f;
+        M[1][1] = -1.0f;
+        M[1][2] = 0.0f;
+        M[1][3] = 2.0f / 3.0f;
+        M[2][0] = -0.5f;
+        M[2][1] = 0.5f;
+        M[2][2] = 0.5f;
+        M[2][3] = 1.0f / 6.0f;
+        M[3][0] = 1.0f / 6.0f;
+        M[3][1] = 0.0f;
+        M[3][2] = 0.0f;
+        M[3][3] = 0.0f;
+    }
 
-        auto evaluateBSpline = [](const Pnt3f& p0, const Pnt3f& p1,
-                                  const Pnt3f& p2, const Pnt3f& p3, float t) {
-            const float t2 = t * t;
-            const float t3 = t2 * t;
-            const float sixth = 1.0f / 6.0f;
-            const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
-            const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
-            const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
-            const float b3 = t3 * sixth;
-            return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
-        };
+    if (!doingShadows)
+        glColor3ub(200, 200, 200);
 
-        const int ARCLEN_SAMPLES = 100;
-        float totalSegLen = 0.0f;
-        for (size_t pi = 0; pi < pointCount; ++pi) {
-            const ControlPoint& a0 =
-                m_pTrack->points[(pi + pointCount - 1) % pointCount];
-            const ControlPoint& a1 = m_pTrack->points[pi];
-            const ControlPoint& a2 = m_pTrack->points[(pi + 1) % pointCount];
-            const ControlPoint& a3 = m_pTrack->points[(pi + 2) % pointCount];
-            auto segEval = [&](float t) {
-                return evaluateBSpline(a0.pos, a1.pos, a2.pos, a3.pos, t);
-            };
-            Pnt3f prevS = segEval(0.0f);
-            float segLen = 0.0f;
-            for (int k = 1; k <= ARCLEN_SAMPLES; ++k) {
-                float tt = static_cast<float>(k) / ARCLEN_SAMPLES;
-                Pnt3f curS = segEval(tt);
-                Pnt3f d = curS - prevS;
-                segLen += std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-                prevS = curS;
+    glLineWidth(8.0f);
+
+    // Store curve points and compute perpendicular vectors for rail separation
+    std::vector<Pnt3f> centerPoints;
+    std::vector<Pnt3f> tangents;
+    std::vector<Pnt3f> orientations;
+    std::vector<Pnt3f>
+        rights;  // orthonormal right vectors (rail offset direction)
+    std::vector<Pnt3f> ups;  // orthonormal up vectors (use for vertical lift)
+
+    for (size_t s = 0; s < pointCount; ++s) {
+        size_t i0 = (s + pointCount - 1) % pointCount;
+        size_t i1 = s % pointCount;
+        size_t i2 = (s + 1) % pointCount;
+        size_t i3 = (s + 2) % pointCount;
+
+        const Pnt3f& p0 = m_pTrack->points[i0].pos;
+        const Pnt3f& p1 = m_pTrack->points[i1].pos;
+        const Pnt3f& p2 = m_pTrack->points[i2].pos;
+        const Pnt3f& p3 = m_pTrack->points[i3].pos;
+
+        const Pnt3f& o0 = m_pTrack->points[i0].orient;
+        const Pnt3f& o1 = m_pTrack->points[i1].orient;
+        const Pnt3f& o2 = m_pTrack->points[i2].orient;
+        const Pnt3f& o3 = m_pTrack->points[i3].orient;
+
+        for (int k = 0; k <= (int)DIVIDE_LINE; ++k) {
+            float t = static_cast<float>(k) / DIVIDE_LINE;
+            float T[4] = { t * t * t, t * t, t, 1.0f };
+
+            // Compute weights
+            float weights[4];
+            for (int r = 0; r < 4; ++r) {
+                weights[r] = M[r][0] * T[0] + M[r][1] * T[1] + M[r][2] * T[2] +
+                             M[r][3] * T[3];
             }
-            totalSegLen += segLen;
-        }
-        float avgSegLen = (pointCount > 0)
-                              ? (totalSegLen / static_cast<float>(pointCount))
-                              : 1.0f;
-        if (avgSegLen < 1e-6f)
-            avgSegLen = 1.0f;
 
-        for (size_t pointIndex = 0; pointIndex < pointCount; ++pointIndex) {
-            const ControlPoint& cp0 =
-                m_pTrack->points[(pointIndex + pointCount - 1) % pointCount];
-            const ControlPoint& cp1 = m_pTrack->points[pointIndex];
-            const ControlPoint& cp2 =
-                m_pTrack->points[(pointIndex + 1) % pointCount];
-            const ControlPoint& cp3 =
-                m_pTrack->points[(pointIndex + 2) % pointCount];
+            // Compute position
+            Pnt3f position = p0 * weights[0] + p1 * weights[1] +
+                             p2 * weights[2] + p3 * weights[3];
+            centerPoints.push_back(position);
 
-            auto evalPos = [&](float t) {
-                return evaluateBSpline(cp0.pos, cp1.pos, cp2.pos, cp3.pos, t);
-            };
-            auto evalOrient = [&](float t) {
-                Pnt3f o = evaluateBSpline(cp0.orient, cp1.orient, cp2.orient,
-                                          cp3.orient, t);
-                o.normalize();
-                return o;
-            };
-
-            if (!(tw->arcLength->value() == 1)) {
-                float step = 1.0f / DIVIDE_LINE;
-                float t = 0.0f;
-                Pnt3f prev = evalPos(0.0f);
-                for (size_t i = 0; i < DIVIDE_LINE; ++i) {
-                    t += step;
-                    if (i + 1 == static_cast<size_t>(DIVIDE_LINE))
-                        t = 1.0f;
-                    Pnt3f curr = evalPos(t);
-                    Pnt3f segDir = curr - prev;
-                    float segLenSq = segDir.x * segDir.x + segDir.y * segDir.y +
-                                     segDir.z * segDir.z;
-                    if (segLenSq > 1e-6f) {
-                        segDir.normalize();
-                        Pnt3f curOrient = evalOrient(t);
-                        Pnt3f cross = segDir * curOrient;
-                        float cLenSq = cross.x * cross.x + cross.y * cross.y +
-                                       cross.z * cross.z;
-                        if (cLenSq > 1e-6f) {
-                            cross.normalize();
-                            cross = cross * 2.5f;
-                            glLineWidth(3);
-                            glBegin(GL_LINES);
-                            if (!doingShadows)
-                                glColor3ub(41, 42, 47);
-                            glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                                       prev.z + cross.z);
-                            glVertex3f(curr.x + cross.x, curr.y + cross.y,
-                                       curr.z + cross.z);
-                            glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                                       prev.z - cross.z);
-                            glVertex3f(curr.x - cross.x, curr.y - cross.y,
-                                       curr.z - cross.z);
-                            glEnd();
-                            glLineWidth(1);
-
-                            if (i % static_cast<size_t>(DIVIDE_LINE / 10) ==
-                                0) {
-                                Pnt3f tieCenter = (prev + curr) * 0.5f;
-                                Pnt3f halfTieThickness = segDir * 0.75f;
-                                Pnt3f tieHalfWidth = cross * 1.5f;
-                                Pnt3f tieRight = tieCenter + tieHalfWidth;
-                                Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                                Pnt3f tieFR = tieRight + halfTieThickness;
-                                Pnt3f tieBR = tieRight - halfTieThickness;
-                                Pnt3f tieFL = tieLeft + halfTieThickness;
-                                Pnt3f tieBL = tieLeft - halfTieThickness;
-                                if (!doingShadows)
-                                    glColor3ub(94, 72, 44);
-                                glBegin(GL_QUADS);
-                                glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                                glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                                glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                                glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                                glEnd();
-                            }
-                        }
-                    }
-                    prev = curr;
-                }
-            } else {
-                float cumLen[ARCLEN_SAMPLES + 1];
-                float tSamples[ARCLEN_SAMPLES + 1];
-                cumLen[0] = 0.0f;
-                tSamples[0] = 0.0f;
-                Pnt3f prevS = evalPos(0.0f);
-                for (int k = 1; k <= ARCLEN_SAMPLES; ++k) {
-                    float t = static_cast<float>(k) / ARCLEN_SAMPLES;
-                    tSamples[k] = t;
-                    Pnt3f curS = evalPos(t);
-                    Pnt3f d = curS - prevS;
-                    float dl = std::sqrt(d.x * d.x + d.y * d.y + d.z * d.z);
-                    cumLen[k] = cumLen[k - 1] + dl;
-                    prevS = curS;
-                }
-                float segLen = cumLen[ARCLEN_SAMPLES];
-                size_t samplesThisSeg = static_cast<size_t>(
-                    std::floor((segLen / avgSegLen) * DIVIDE_LINE + 0.5f));
-                if (samplesThisSeg < 1)
-                    samplesThisSeg = 1;
-                size_t tieEvery = samplesThisSeg / 10;
-                if (tieEvery < 1)
-                    tieEvery = 1;
-
-                float totalLen = segLen;
-                auto sToT = [&](float s01) {
-                    if (totalLen <= 1e-6f)
-                        return s01;
-                    float target = s01 * totalLen;
-                    int lo = 0, hi = ARCLEN_SAMPLES;
-                    while (lo < hi) {
-                        int mid = (lo + hi) / 2;
-                        if (cumLen[mid] < target)
-                            lo = mid + 1;
-                        else
-                            hi = mid;
-                    }
-                    int idx = (lo < ARCLEN_SAMPLES ? lo : ARCLEN_SAMPLES);
-                    int i0 = (idx > 0 ? idx - 1 : 0);
-                    float s0 = cumLen[i0], s1 = cumLen[idx];
-                    float t0 = tSamples[i0], t1 = tSamples[idx];
-                    float denom = (s1 - s0);
-                    float a = denom > 1e-6f ? (target - s0) / denom : 0.0f;
-                    return t0 + a * (t1 - t0);
-                };
-
-                Pnt3f prev = evalPos(0.0f);
-                for (size_t i = 0; i < samplesThisSeg; ++i) {
-                    float sPrev = static_cast<float>(i) / samplesThisSeg;
-                    float sCurr = static_cast<float>(i + 1) / samplesThisSeg;
-                    float tPrev = sToT(sPrev);
-                    float tCurr = sToT(sCurr);
-                    Pnt3f curr = evalPos(tCurr);
-                    Pnt3f segDir = curr - prev;
-                    float segLenSq = segDir.x * segDir.x + segDir.y * segDir.y +
-                                     segDir.z * segDir.z;
-                    if (segLenSq > 1e-6f) {
-                        segDir.normalize();
-                        Pnt3f curOrient = evalOrient(tCurr);
-                        Pnt3f cross = segDir * curOrient;
-                        float cLenSq = cross.x * cross.x + cross.y * cross.y +
-                                       cross.z * cross.z;
-                        if (cLenSq > 1e-6f) {
-                            cross.normalize();
-                            cross = cross * 2.5f;
-                            glLineWidth(3);
-                            glBegin(GL_LINES);
-                            if (!doingShadows)
-                                glColor3ub(41, 42, 47);
-                            glVertex3f(prev.x + cross.x, prev.y + cross.y,
-                                       prev.z + cross.z);
-                            glVertex3f(curr.x + cross.x, curr.y + cross.y,
-                                       curr.z + cross.z);
-                            glVertex3f(prev.x - cross.x, prev.y - cross.y,
-                                       prev.z - cross.z);
-                            glVertex3f(curr.x - cross.x, curr.y - cross.y,
-                                       curr.z - cross.z);
-                            glEnd();
-                            glLineWidth(1);
-
-                            if (i % tieEvery == 0) {
-                                Pnt3f tieCenter = (prev + curr) * 0.5f;
-                                Pnt3f halfTieThickness = segDir * 0.75f;
-                                Pnt3f tieHalfWidth = cross * 1.5f;
-                                Pnt3f tieRight = tieCenter + tieHalfWidth;
-                                Pnt3f tieLeft = tieCenter - tieHalfWidth;
-                                Pnt3f tieFR = tieRight + halfTieThickness;
-                                Pnt3f tieBR = tieRight - halfTieThickness;
-                                Pnt3f tieFL = tieLeft + halfTieThickness;
-                                Pnt3f tieBL = tieLeft - halfTieThickness;
-                                if (!doingShadows)
-                                    glColor3ub(94, 72, 44);
-                                glBegin(GL_QUADS);
-                                glVertex3f(tieFL.x, tieFL.y, tieFL.z);
-                                glVertex3f(tieFR.x, tieFR.y, tieFR.z);
-                                glVertex3f(tieBR.x, tieBR.y, tieBR.z);
-                                glVertex3f(tieBL.x, tieBL.y, tieBL.z);
-                                glEnd();
-                            }
-                        }
-                    }
-                    prev = curr;
-                }
+            // Compute tangent (derivative of weights)
+            float dT[4] = { 3.0f * t * t, 2.0f * t, 1.0f, 0.0f };
+            float dWeights[4];
+            for (int r = 0; r < 4; ++r) {
+                dWeights[r] = M[r][0] * dT[0] + M[r][1] * dT[1] +
+                              M[r][2] * dT[2] + M[r][3] * dT[3];
             }
+            Pnt3f tangent = p0 * dWeights[0] + p1 * dWeights[1] +
+                            p2 * dWeights[2] + p3 * dWeights[3];
+            tangent.normalize();
+            tangents.push_back(tangent);
+
+            // Compute orientation
+            Pnt3f orientation = o0 * weights[0] + o1 * weights[1] +
+                                o2 * weights[2] + o3 * weights[3];
+            orientation.normalize();
+            orientations.push_back(orientation);
         }
     }
+
+    // Build frames from tangent and orientation, ensuring continuity
+    rights.resize(centerPoints.size());
+    ups.resize(centerPoints.size());
+
+    if (!centerPoints.empty()) {
+        // Initialize first frame
+        Pnt3f tangent = tangents[0];
+        Pnt3f orient = orientations[0];
+
+        // Project orient perpendicular to tangent
+        float dot =
+            tangent.x * orient.x + tangent.y * orient.y + tangent.z * orient.z;
+        Pnt3f up = Pnt3f(orient.x - dot * tangent.x, orient.y - dot * tangent.y,
+                         orient.z - dot * tangent.z);
+        float upLen = std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+        if (upLen < 1e-6f) {
+            // Fallback if orient parallel to tangent
+            Pnt3f fallback =
+                (fabs(tangent.y) < 0.9f) ? Pnt3f(0, 1, 0) : Pnt3f(1, 0, 0);
+            dot = tangent.x * fallback.x + tangent.y * fallback.y +
+                  tangent.z * fallback.z;
+            up = Pnt3f(fallback.x - dot * tangent.x,
+                       fallback.y - dot * tangent.y,
+                       fallback.z - dot * tangent.z);
+            upLen = std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+        }
+        up = Pnt3f(up.x / upLen, up.y / upLen, up.z / upLen);
+
+        Pnt3f right = tangent * up;
+        right.normalize();
+        up = right * tangent;  // Ensure orthogonality
+        up.normalize();
+
+        ups[0] = up;
+        rights[0] = right;
+
+        // Propagate frames, ensuring no sudden flips
+        for (size_t i = 1; i < centerPoints.size(); ++i) {
+            tangent = tangents[i];
+            orient = orientations[i];
+
+            // Project orient perpendicular to tangent
+            dot = tangent.x * orient.x + tangent.y * orient.y +
+                  tangent.z * orient.z;
+            up = Pnt3f(orient.x - dot * tangent.x, orient.y - dot * tangent.y,
+                       orient.z - dot * tangent.z);
+            upLen = std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
+            if (upLen < 1e-6f) {
+                up = ups[i - 1];
+            } else {
+                up = Pnt3f(up.x / upLen, up.y / upLen, up.z / upLen);
+            }
+
+            // Check if up flipped relative to previous frame (dot product < 0)
+            float continuityDot =
+                up.x * ups[i - 1].x + up.y * ups[i - 1].y + up.z * ups[i - 1].z;
+            if (continuityDot < 0.0f) {
+                // Flip to maintain continuity
+                up = Pnt3f(-up.x, -up.y, -up.z);
+            }
+
+            right = tangent * up;
+            right.normalize();
+            up = right * tangent;
+            up.normalize();
+
+            ups[i] = up;
+            rights[i] = right;
+        }
+    }
+
+    // Draw two parallel rails
+    const float railOffset = GUAGE / 2.0f;  // Half gauge distance
+    const float tieThickness = 0.8f;  // Same as tie thickness for alignment
+    const float railHeight =
+        tieThickness * 0.5f;  // Raise rails to sit on top of ties
+
+    for (int rail = 0; rail < 2; ++rail) {
+        float side = (rail == 0) ? -1.0f : 1.0f;
+
+        if (!doingShadows) {
+            glColor3ub(180, 180, 180);
+        }
+
+        for (size_t s = 0; s < pointCount; ++s) {
+            glBegin(GL_LINE_STRIP);
+            for (int k = 0; k <= (int)DIVIDE_LINE; ++k) {
+                size_t idx = s * ((int)DIVIDE_LINE + 1) + k;
+
+                // Use precomputed continuous frame
+                const Pnt3f& right = rights[idx];
+                const Pnt3f& up = ups[idx];
+                Pnt3f railPos = centerPoints[idx] +
+                                right * (side * railOffset) + up * railHeight;
+                glVertex3f(railPos.x, railPos.y, railPos.z);
+            }
+            glEnd();
+        }
+    }
+
+    // Draw cross ties
+    const int tieInterval = 40;
+    if (!doingShadows) {
+        glColor3ub(139, 90, 43);
+    }
+
+    for (size_t tieIndex = 0; tieIndex < centerPoints.size();
+         tieIndex += tieInterval) {
+        const Pnt3f& right = rights[tieIndex];
+        const Pnt3f& up = ups[tieIndex];
+
+        // Extend the tie slightly beyond the rails
+        Pnt3f leftEnd = centerPoints[tieIndex] + right * (-railOffset * 1.3f);
+        Pnt3f rightEnd = centerPoints[tieIndex] + right * (railOffset * 1.3f);
+
+        const float tieWidth = 1.5f;
+        const float tieThickness = 0.8f;
+
+        Pnt3f tangent = tangents[tieIndex];
+        Pnt3f halfWidth =
+            tangent *
+            (tieWidth *
+             0.5f);  // cross gives perpendicular; want along tangent -> implement scalar multiply instead
+        // We need scalar multiply, but operator * is cross; so rebuild halfWidth explicitly:
+        halfWidth =
+            Pnt3f(tangent.x * (tieWidth * 0.5f), tangent.y * (tieWidth * 0.5f),
+                  tangent.z * (tieWidth * 0.5f));
+        Pnt3f thickness = up * tieThickness;  // lift using up
+
+        // Calculate the 8 vertices of the tie (box)
+        Pnt3f v1 = leftEnd - halfWidth - thickness;
+        Pnt3f v2 = leftEnd + halfWidth - thickness;
+        Pnt3f v3 = leftEnd + halfWidth;
+        Pnt3f v4 = leftEnd - halfWidth;
+
+        Pnt3f v5 = rightEnd - halfWidth - thickness;
+        Pnt3f v6 = rightEnd + halfWidth - thickness;
+        Pnt3f v7 = rightEnd + halfWidth;
+        Pnt3f v8 = rightEnd - halfWidth;
+
+        glBegin(GL_QUADS);
+        // Top face
+        glNormal3f(up.x, up.y, up.z);
+        glVertex3f(v4.x, v4.y, v4.z);
+        glVertex3f(v3.x, v3.y, v3.z);
+        glVertex3f(v7.x, v7.y, v7.z);
+        glVertex3f(v8.x, v8.y, v8.z);
+
+        // Bottom face
+        glNormal3f(-up.x, -up.y, -up.z);
+        glVertex3f(v1.x, v1.y, v1.z);
+        glVertex3f(v5.x, v5.y, v5.z);
+        glVertex3f(v6.x, v6.y, v6.z);
+        glVertex3f(v2.x, v2.y, v2.z);
+
+        // Front face
+        glNormal3f(tangent.x, tangent.y, tangent.z);
+        glVertex3f(v2.x, v2.y, v2.z);
+        glVertex3f(v6.x, v6.y, v6.z);
+        glVertex3f(v7.x, v7.y, v7.z);
+        glVertex3f(v3.x, v3.y, v3.z);
+
+        // Back face
+        glNormal3f(-tangent.x, -tangent.y, -tangent.z);
+        glVertex3f(v5.x, v5.y, v5.z);
+        glVertex3f(v1.x, v1.y, v1.z);
+        glVertex3f(v4.x, v4.y, v4.z);
+        glVertex3f(v8.x, v8.y, v8.z);
+
+        // Left face
+        glNormal3f(-right.x, -right.y, -right.z);
+        glVertex3f(v1.x, v1.y, v1.z);
+        glVertex3f(v2.x, v2.y, v2.z);
+        glVertex3f(v3.x, v3.y, v3.z);
+        glVertex3f(v4.x, v4.y, v4.z);
+
+        // Right face
+        glNormal3f(right.x, right.y, right.z);
+        glVertex3f(v6.x, v6.y, v6.z);
+        glVertex3f(v5.x, v5.y, v5.z);
+        glVertex3f(v8.x, v8.y, v8.z);
+        glVertex3f(v7.x, v7.y, v7.z);
+        glEnd();
+    }
+
+    glLineWidth(1.0f);
 }
 
 void TrainView::drawTrain(bool doingShadows) {
