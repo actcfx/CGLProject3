@@ -1000,7 +1000,6 @@ void TrainView::drawTrack(bool doingShadows) {
                                 { 0.0f, 0.0f, 0.0f, 0.0f },
                                 { 0.0f, 0.0f, 0.0f, 0.0f } };
         memcpy(M, linearM, sizeof(linearM));
-
     } else if (tw->splineBrowser->value() == 2) {
         // Cardinal Cubic
         float cardinalM[4][4] = { { -0.5f, 1.0f, -0.5f, 0.0f },
@@ -1017,10 +1016,12 @@ void TrainView::drawTrack(bool doingShadows) {
         memcpy(M, bSplineM, sizeof(bSplineM));
     }
 
-    if (!doingShadows)
+    if (!doingShadows) {
+        //  Track color
         glColor3ub(200, 200, 200);
+    }
 
-    glLineWidth(8.0f);
+    glLineWidth(8.0f);  // Track line width
 
     // Sampled geometry and frames along the spline
     std::vector<Pnt3f> trackCenters;
