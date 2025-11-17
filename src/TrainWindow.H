@@ -94,6 +94,8 @@ public:
     Fl_Button* pointLightButton;
     Fl_Button* spotLightButton;
 
+	Fl_Value_Slider* tensionSlider;
+
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
 #ifdef EXAMPLE_SOLUTION

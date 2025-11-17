@@ -108,7 +108,7 @@ private:
     Pnt3f trainForward;
 
     // ---------- Arc Length ----------
-    struct ArcLengthData {
+    struct ArcLengthTable {
         size_t segmentCount = 0;
         std::vector<float> segOffset;
         std::vector<std::vector<float>> cumLen;
@@ -119,14 +119,6 @@ private:
     static constexpr int ARCLEN_SAMPLES = 128;
 
     static size_t wrapIndex(int index, size_t count);
-    static Pnt3f evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1,
-                                  const Pnt3f& p2, const Pnt3f& p3, float t);
-    static Pnt3f evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1,
-                                 const Pnt3f& p2, const Pnt3f& p3, float t);
-    static Pnt3f evaluateSplinePosition(const std::vector<ControlPoint>& points,
-                                        int mode, size_t segmentIdx, float t);
-    static ArcLengthData buildArcLengthData(
-        const std::vector<ControlPoint>& points, int mode);
-    static void mapLengthToSegment(const ArcLengthData& data, float s,
-                                   size_t& segment, float& outT);
+    float currentTension(float fallback) const;
+    void buildBasisMatrix(int mode, float out[4][4]) const;
 };

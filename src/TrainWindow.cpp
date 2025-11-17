@@ -153,6 +153,12 @@ TrainWindow::TrainWindow(const int x, const int y)
         pty += 30;
 
         // ---------- Tension Slider ----------
+        tensionSlider = new Fl_Value_Slider(665, pty, 130, 20, "Tension");
+        tensionSlider->range(0, 1);
+        tensionSlider->value(0.5);
+        tensionSlider->align(FL_ALIGN_LEFT);
+        tensionSlider->type(FL_HORIZONTAL);
+        tensionSlider->callback((Fl_Callback*)damageCB, this);
 
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);

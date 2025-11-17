@@ -289,7 +289,8 @@ void TrainView::draw() {
     // prepare for projection
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    setProjection();  // put the code to set up matrices here
+
+    setProjection();
 
     setLighting();
 
@@ -332,11 +333,11 @@ void TrainView::setProjection()
     // Compute the aspect ratio (we'll need it)
     float aspect = static_cast<float>(w()) / static_cast<float>(h());
 
-    // Check whether we use the world camp
-    if (tw->worldCam->value())
+    if (tw->worldCam->value()) {
+        // ---------- World Cam ----------
         arcball.setProjection(false);
-    // Or we use the top cam
-    else if (tw->topCam->value()) {
+    } else if (tw->topCam->value()) {
+        // ---------- Top Cam ----------
         float wi, he;
         if (aspect >= 1) {
             wi = 110;
@@ -353,17 +354,24 @@ void TrainView::setProjection()
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
         glRotatef(-90, 1, 0, 0);
+    } else {
+        // ---------- Train Cam ----------
+        const Pnt3f eyeOffset = trainForward * (10.0f);
+        const Pnt3f eye = trainPosition + eyeOffset + Pnt3f(0.0f, 4.0f, 0.0f);
+        const Pnt3f center = trainPosition + trainForward * 40.0f;
+        const Pnt3f up = Pnt3f(0.0f, 1.0f, 0.0f);
+
+        glMatrixMode(GL_PROJECTION);
+        gluPerspective(60.0, aspect, 0.1, 5000.0);
+        glMatrixMode(GL_MODELVIEW);
+        glLoadIdentity();
+        gluLookAt(eye.x, eye.y, eye.z, center.x, center.y, center.z, up.x, up.y,
+                  up.z);
     }
-    // Or do the train view or other view here
-    // ####################################################################
-    // TODO:
-    // put code for train view projection here!
-    // ####################################################################
-    else {
+
 #ifdef EXAMPLE_SOLUTION
-        trainCamView(this, aspect);
+    trainCamView(this, aspect);
 #endif
-    }
 }
 
 //************************************************************************
@@ -416,159 +424,46 @@ size_t TrainView::wrapIndex(int index, size_t count) {
     return static_cast<size_t>(wrapped);
 }
 
-Pnt3f TrainView::evaluateCardinal(const Pnt3f& p0, const Pnt3f& p1,
-                                  const Pnt3f& p2, const Pnt3f& p3, float t) {
-    const float tension = 0.0f;
-    const float factor = (1.0f - tension) * 0.5f;
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
-    const float h10 = t3 - 2.0f * t2 + t;
-    const float h01 = -2.0f * t3 + 3.0f * t2;
-    const float h11 = t3 - t2;
-    Pnt3f m1 = (p2 - p0) * factor;
-    Pnt3f m2 = (p3 - p1) * factor;
-    return p1 * h00 + m1 * h10 + p2 * h01 + m2 * h11;
+float TrainView::currentTension(float fallback) const {
+    if (tw && tw->tensionSlider)
+        return static_cast<float>(tw->tensionSlider->value());
+    return fallback;
 }
 
-Pnt3f TrainView::evaluateBSpline(const Pnt3f& p0, const Pnt3f& p1,
-                                 const Pnt3f& p2, const Pnt3f& p3, float t) {
-    const float t2 = t * t;
-    const float t3 = t2 * t;
-    const float sixth = 1.0f / 6.0f;
-    const float b0 = (-t3 + 3.0f * t2 - 3.0f * t + 1.0f) * sixth;
-    const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
-    const float b2 = (-3.0f * t3 + 3.0f * t2 + 3.0f * t + 1.0f) * sixth;
-    const float b3 = t3 * sixth;
-    return p0 * b0 + p1 * b1 + p2 * b2 + p3 * b3;
-}
-
-Pnt3f TrainView::evaluateSplinePosition(const std::vector<ControlPoint>& points,
-                                        int mode, size_t segmentIdx, float t) {
-    const size_t pointCount = points.size();
-    if (pointCount == 0)
-        return Pnt3f(0, 0, 0);
+void TrainView::buildBasisMatrix(int mode, float out[4][4]) const {
+    float linearM[4][4] = { { 0.0f, 0.0f, 0.0f, 0.0f },
+                            { 0.0f, 0.0f, -1.0f, 1.0f },
+                            { 0.0f, 0.0f, 1.0f, 0.0f },
+                            { 0.0f, 0.0f, 0.0f, 0.0f } };
+    // keep classic cardinal values for reference but compute dynamically below if needed
+    float baseCardinalM[4][4] = { { -0.5f, 1.0f, -0.5f, 0.0f },
+                                  { 1.5f, -2.5f, 0.0f, 1.0f },
+                                  { -1.5f, 2.0f, 0.5f, 0.0f },
+                                  { 0.5f, -0.5f, 0.0f, 0.0f } };
 
     if (mode == 1) {
-        const Pnt3f& p0 = points[segmentIdx % pointCount].pos;
-        const Pnt3f& p1 = points[(segmentIdx + 1) % pointCount].pos;
-        return (1.0f - t) * p0 + t * p1;
+        memcpy(out, linearM, sizeof(linearM));
+    } else if (mode == 2) {
+        // Cardinal now responds to the tension slider (dynamic)
+        float tension = currentTension(0.5f);  // default fallback for cardinal
+        float cardinalM[4][4] = {
+            { -tension, 2.0f * tension, -1.0f * tension, 0.0f },
+            { 3.0f * tension, -5.0f * tension, 0.0f, 2.0f * tension },
+            { -3.0f * tension, 4.0f * tension, tension, 0.0f },
+            { tension, -tension, 0.0f, 0.0f }
+        };
+        memcpy(out, cardinalM, sizeof(cardinalM));
+    } else {
+        // b-spline uses a fixed basis (no dynamic slider)
+        const float tension = 1.0f / 6.0f;
+        float bSplineM[4][4] = {
+            { -tension, 3.0f * tension, -3.0f * tension, tension },
+            { 3.0f * tension, -6.0f * tension, 0.0f, 4.0f * tension },
+            { -3.0f * tension, 3.0f * tension, 3.0f * tension, tension },
+            { tension, 0.0f, 0.0f, 0.0f }
+        };
+        memcpy(out, bSplineM, sizeof(bSplineM));
     }
-
-    size_t prev =
-        TrainView::wrapIndex(static_cast<int>(segmentIdx) - 1, pointCount);
-    size_t next = (segmentIdx + 1) % pointCount;
-    size_t next2 = (segmentIdx + 2) % pointCount;
-
-    const Pnt3f& p0 = points[prev].pos;
-    const Pnt3f& p1 = points[segmentIdx].pos;
-    const Pnt3f& p2 = points[next].pos;
-    const Pnt3f& p3 = points[next2].pos;
-
-    if (mode == 2)
-        return TrainView::evaluateCardinal(p0, p1, p2, p3, t);
-    return TrainView::evaluateBSpline(p0, p1, p2, p3, t);
-}
-
-TrainView::ArcLengthData TrainView::buildArcLengthData(
-    const std::vector<ControlPoint>& points, int mode) {
-    ArcLengthData data;
-    const size_t pointCount = points.size();
-    if ((mode == 1 && pointCount < 2) || (mode != 1 && pointCount < 4))
-        return data;
-
-    data.segmentCount = pointCount;
-    data.segOffset.assign(pointCount + 1, 0.0f);
-    data.cumLen.assign(pointCount,
-                       std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
-    data.tSamples.assign(
-        pointCount, std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
-
-    for (size_t si = 0; si < pointCount; ++si) {
-        Pnt3f prevPos =
-            TrainView::evaluateSplinePosition(points, mode, si, 0.0f);
-        for (int sample = 1; sample <= TrainView::ARCLEN_SAMPLES; ++sample) {
-            float t = static_cast<float>(sample) / TrainView::ARCLEN_SAMPLES;
-            data.tSamples[si][sample] = t;
-            Pnt3f current =
-                TrainView::evaluateSplinePosition(points, mode, si, t);
-            Pnt3f diff = current - prevPos;
-            float dist =
-                std::sqrt(diff.x * diff.x + diff.y * diff.y + diff.z * diff.z);
-            data.cumLen[si][sample] = data.cumLen[si][sample - 1] + dist;
-            prevPos = current;
-        }
-        float segmentLength = data.cumLen[si][TrainView::ARCLEN_SAMPLES];
-        data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
-    }
-    data.totalLen = data.segOffset.back();
-    return data;
-}
-
-void TrainView::mapLengthToSegment(const ArcLengthData& data, float s,
-                                   size_t& segment, float& outT) {
-    if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
-        segment = 0;
-        outT = 0.0f;
-        return;
-    }
-
-    float clamped = s;
-    if (clamped <= 0.0f) {
-        segment = 0;
-        outT = 0.0f;
-        return;
-    }
-    if (clamped >= data.totalLen) {
-        segment = data.segmentCount - 1;
-        outT = 1.0f;
-        return;
-    }
-
-    size_t lo = 0;
-    size_t hi = data.segmentCount;
-    while (lo + 1 < hi) {
-        size_t mid = (lo + hi) / 2;
-        if (data.segOffset[mid] <= clamped)
-            lo = mid;
-        else
-            hi = mid;
-    }
-    segment = lo;
-    float localLength = clamped - data.segOffset[segment];
-    float segmentLength = data.segOffset[segment + 1] - data.segOffset[segment];
-    if (segmentLength <= 1e-6f) {
-        outT = 0.0f;
-        return;
-    }
-
-    const auto& cum = data.cumLen[segment];
-    const auto& ts = data.tSamples[segment];
-    int loI = 0;
-    int hiI = TrainView::ARCLEN_SAMPLES;
-    while (loI < hiI) {
-        int mid = (loI + hiI) / 2;
-        if (cum[mid] < localLength)
-            loI = mid + 1;
-        else
-            hiI = mid;
-    }
-    int idx =
-        (loI < TrainView::ARCLEN_SAMPLES) ? loI : TrainView::ARCLEN_SAMPLES;
-    int prevIdx = (idx > 0) ? idx - 1 : 0;
-    float s0 = cum[prevIdx];
-    float s1 = cum[idx];
-    float t0 = ts[prevIdx];
-    float t1 = ts[idx];
-    float tau = 0.0f;
-    float denom = s1 - s0;
-    if (denom > 1e-6f)
-        tau = (localLength - s0) / denom;
-    if (tau < 0.0f)
-        tau = 0.0f;
-    else if (tau > 1.0f)
-        tau = 1.0f;
-    outT = t0 + tau * (t1 - t0);
 }
 
 void TrainView::drawTrack(bool doingShadows) {
@@ -577,29 +472,7 @@ void TrainView::drawTrack(bool doingShadows) {
         return;
 
     float M[4][4] = { 0 };
-
-    if (tw->splineBrowser->value() == 1) {
-        // Linear
-        float linearM[4][4] = { { -1.0f, 1.0f, 0.0f, 0.0f },
-                                { 1.0f, 0.0f, 0.0f, 0.0f },
-                                { 0.0f, 0.0f, 0.0f, 0.0f },
-                                { 0.0f, 0.0f, 0.0f, 0.0f } };
-        memcpy(M, linearM, sizeof(linearM));
-    } else if (tw->splineBrowser->value() == 2) {
-        // Cardinal Cubic
-        float cardinalM[4][4] = { { -0.5f, 1.0f, -0.5f, 0.0f },
-                                  { 1.5f, -2.5f, 0.0f, 1.0f },
-                                  { -1.5f, 2.0f, 0.5f, 0.0f },
-                                  { 0.5f, -0.5f, 0.0f, 0.0f } };
-        memcpy(M, cardinalM, sizeof(cardinalM));
-    } else {
-        // B-Spline
-        float bSplineM[4][4] = { { -1.0f / 6.0f, 0.5f, -0.5f, 1.0f / 6.0f },
-                                 { 0.5f, -1.0f, 0.0f, 2.0f / 3.0f },
-                                 { -0.5f, 0.5f, 0.5f, 1.0f / 6.0f },
-                                 { 1.0f / 6.0f, 0.0f, 0.0f, 0.0f } };
-        memcpy(M, bSplineM, sizeof(bSplineM));
-    }
+    buildBasisMatrix(tw->splineBrowser->value(), M);
 
     if (!doingShadows) {
         //  Track color
@@ -668,6 +541,7 @@ void TrainView::drawTrack(bool doingShadows) {
         }
     }
 
+    // ---------- Arc Length ----------
     // Build frames from tangent and orientation, ensuring continuity
     rightVectors.resize(trackCenters.size());
     upVectors.resize(trackCenters.size());
@@ -976,7 +850,9 @@ void TrainView::drawTrack(bool doingShadows) {
 
 void TrainView::drawTrain(bool doingShadows) {
     const size_t pointCount = m_pTrack->points.size();
-    if (pointCount < 4) {
+    const int splineMode = tw->splineBrowser->value();
+    const size_t minPoints = (splineMode == 1) ? 2 : 4;
+    if (pointCount < minPoints) {
         return;
     }
 
@@ -995,116 +871,209 @@ void TrainView::drawTrain(bool doingShadows) {
     float localT = wrappedParam - std::floor(wrappedParam);
 
     if (tw->arcLength && tw->arcLength->value()) {
-        TrainView::ArcLengthData arcData = TrainView::buildArcLengthData(
-            m_pTrack->points, tw->splineBrowser->value());
+        const auto buildArcLengthTable = [&](int mode) {
+            ArcLengthTable data;
+            if ((mode == 1 && pointCount < 2) ||
+                (mode != 1 && pointCount < 4)) {
+                return data;
+            }
+
+            data.segmentCount = pointCount;
+            data.segOffset.assign(pointCount + 1, 0.0f);
+            data.cumLen.assign(
+                pointCount,
+                std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+            data.tSamples.assign(
+                pointCount,
+                std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+
+            const auto evalPosition = [&](size_t si, float t) {
+                if (pointCount == 0)
+                    return Pnt3f(0, 0, 0);
+
+                if (mode == 1) {
+                    const Pnt3f& p0 = m_pTrack->points[si % pointCount].pos;
+                    const Pnt3f& p1 =
+                        m_pTrack->points[(si + 1) % pointCount].pos;
+                    return (1.0f - t) * p0 + t * p1;
+                }
+
+                size_t prevIdx =
+                    wrapIndex(static_cast<int>(si) - 1, pointCount);
+                size_t nextIdx = (si + 1) % pointCount;
+                size_t next2Idx = (si + 2) % pointCount;
+
+                const Pnt3f& p0 = m_pTrack->points[prevIdx].pos;
+                const Pnt3f& p1 = m_pTrack->points[si].pos;
+                const Pnt3f& p2 = m_pTrack->points[nextIdx].pos;
+                const Pnt3f& p3 = m_pTrack->points[next2Idx].pos;
+
+                float basis[4][4] = { 0 };
+                buildBasisMatrix(mode, basis);
+
+                const float t2 = t * t;
+                const float t3 = t2 * t;
+                float Tvec[4] = { t3, t2, t, 1.0f };
+                float weights[4];
+                for (int r = 0; r < 4; ++r) {
+                    weights[r] = basis[r][0] * Tvec[0] + basis[r][1] * Tvec[1] +
+                                 basis[r][2] * Tvec[2] + basis[r][3] * Tvec[3];
+                }
+
+                return p0 * weights[0] + p1 * weights[1] + p2 * weights[2] +
+                       p3 * weights[3];
+            };
+
+            for (size_t si = 0; si < pointCount; ++si) {
+                Pnt3f prevPos = evalPosition(si, 0.0f);
+                for (int sample = 1; sample <= TrainView::ARCLEN_SAMPLES;
+                     ++sample) {
+                    float t =
+                        static_cast<float>(sample) / TrainView::ARCLEN_SAMPLES;
+                    data.tSamples[si][sample] = t;
+                    Pnt3f current = evalPosition(si, t);
+                    Pnt3f diff = current - prevPos;
+                    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y +
+                                           diff.z * diff.z);
+                    data.cumLen[si][sample] =
+                        data.cumLen[si][sample - 1] + dist;
+                    prevPos = current;
+                }
+                float segmentLength =
+                    data.cumLen[si][TrainView::ARCLEN_SAMPLES];
+                data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
+            }
+            data.totalLen = data.segOffset.back();
+            return data;
+        };
+
+        const auto mapLengthToSegment = [](const ArcLengthTable& data, float s,
+                                           size_t& segment, float& outT) {
+            if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
+                segment = 0;
+                outT = 0.0f;
+                return;
+            }
+
+            float clamped = s;
+            if (clamped <= 0.0f) {
+                segment = 0;
+                outT = 0.0f;
+                return;
+            }
+            if (clamped >= data.totalLen) {
+                segment = data.segmentCount - 1;
+                outT = 1.0f;
+                return;
+            }
+
+            size_t lo = 0;
+            size_t hi = data.segmentCount;
+            while (lo + 1 < hi) {
+                size_t mid = (lo + hi) / 2;
+                if (data.segOffset[mid] <= clamped)
+                    lo = mid;
+                else
+                    hi = mid;
+            }
+            segment = lo;
+            float localLength = clamped - data.segOffset[segment];
+            float segmentLength =
+                data.segOffset[segment + 1] - data.segOffset[segment];
+            if (segmentLength <= 1e-6f) {
+                outT = 0.0f;
+                return;
+            }
+
+            const auto& cum = data.cumLen[segment];
+            const auto& ts = data.tSamples[segment];
+            int loI = 0;
+            int hiI = TrainView::ARCLEN_SAMPLES;
+            while (loI < hiI) {
+                int mid = (loI + hiI) / 2;
+                if (cum[mid] < localLength)
+                    loI = mid + 1;
+                else
+                    hiI = mid;
+            }
+            int idx = (loI < TrainView::ARCLEN_SAMPLES)
+                          ? loI
+                          : TrainView::ARCLEN_SAMPLES;
+            int prevIdx = (idx > 0) ? idx - 1 : 0;
+            float s0 = cum[prevIdx];
+            float s1 = cum[idx];
+            float t0 = ts[prevIdx];
+            float t1 = ts[idx];
+            float tau = 0.0f;
+            float denom = s1 - s0;
+            if (denom > 1e-6f)
+                tau = (localLength - s0) / denom;
+            if (tau < 0.0f)
+                tau = 0.0f;
+            else if (tau > 1.0f)
+                tau = 1.0f;
+            outT = t0 + tau * (t1 - t0);
+        };
+
+        ArcLengthTable arcData = buildArcLengthTable(splineMode);
         if (arcData.totalLen > 1e-6f) {
             float normalized = wrappedParam / static_cast<float>(pointCount);
             if (normalized < 0.0f)
                 normalized += 1.0f;
             float targetLength = normalized * arcData.totalLen;
-            TrainView::mapLengthToSegment(arcData, targetLength, segmentIndex,
-                                          localT);
+            mapLengthToSegment(arcData, targetLength, segmentIndex, localT);
         }
     }
 
-    Pnt3f position;
-    Pnt3f tangent;
-    Pnt3f up;
+    size_t idxPrev =
+        TrainView::wrapIndex(static_cast<int>(segmentIndex) - 1, pointCount);
+    size_t idxCurr = segmentIndex;
+    size_t idxNext = (segmentIndex + 1) % pointCount;
+    size_t idxNext2 = (segmentIndex + 2) % pointCount;
 
-    if (tw->splineBrowser->value() == 1) {
-        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) + 1, pointCount)];
+    const ControlPoint& cpPrev = m_pTrack->points[idxPrev];
+    const ControlPoint& cpCurr = m_pTrack->points[idxCurr];
+    const ControlPoint& cpNext = m_pTrack->points[idxNext];
+    const ControlPoint& cpNext2 = m_pTrack->points[idxNext2];
 
-        position = (1.0f - localT) * cp1.pos + localT * cp2.pos;
-        up = (1.0f - localT) * cp1.orient + localT * cp2.orient;
-        up.normalize();
+    float M[4][4] = { 0 };
+    buildBasisMatrix(splineMode, M);
 
-        tangent = cp2.pos - cp1.pos;
-        float tangentLenSq = tangent.x * tangent.x + tangent.y * tangent.y +
-                             tangent.z * tangent.z;
-        if (tangentLenSq > 1e-6f) {
-            tangent.normalize();
-        } else {
-            tangent = Pnt3f(0.0f, 0.0f, 1.0f);
-        }
-    } else if (tw->splineBrowser->value() == 2) {
-        const ControlPoint& cp0 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) - 1, pointCount)];
-        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) + 1, pointCount)];
-        const ControlPoint& cp3 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) + 2, pointCount)];
+    const float t2 = localT * localT;
+    const float t3 = t2 * localT;
+    float T[4] = { t3, t2, localT, 1.0f };
+    float weights[4];
+    for (int r = 0; r < 4; ++r) {
+        weights[r] =
+            M[r][0] * T[0] + M[r][1] * T[1] + M[r][2] * T[2] + M[r][3] * T[3];
+    }
 
-        const float tension = 0.0f;
-        const float tensionFactor = (1.0f - tension) * 0.5f;
-        const float t2 = localT * localT;
-        const float t3 = t2 * localT;
+    auto weightedSum = [&](const Pnt3f& a, const Pnt3f& b, const Pnt3f& c,
+                           const Pnt3f& d) {
+        return a * weights[0] + b * weights[1] + c * weights[2] +
+               d * weights[3];
+    };
 
-        Pnt3f m1 = (cp2.pos - cp0.pos) * tensionFactor;
-        Pnt3f m2 = (cp3.pos - cp1.pos) * tensionFactor;
+    Pnt3f position =
+        weightedSum(cpPrev.pos, cpCurr.pos, cpNext.pos, cpNext2.pos);
+    Pnt3f up = weightedSum(cpPrev.orient, cpCurr.orient, cpNext.orient,
+                           cpNext2.orient);
 
-        const float h00 = 2.0f * t3 - 3.0f * t2 + 1.0f;
-        const float h10 = t3 - 2.0f * t2 + localT;
-        const float h01 = -2.0f * t3 + 3.0f * t2;
-        const float h11 = t3 - t2;
+    float dT[4] = { 3.0f * t2, 2.0f * localT, 1.0f, 0.0f };
+    float dWeights[4];
+    for (int r = 0; r < 4; ++r) {
+        dWeights[r] = M[r][0] * dT[0] + M[r][1] * dT[1] + M[r][2] * dT[2] +
+                      M[r][3] * dT[3];
+    }
 
-        position = cp1.pos * h00 + m1 * h10 + cp2.pos * h01 + m2 * h11;
-
-        Pnt3f orientM1 = (cp2.orient - cp0.orient) * tensionFactor;
-        Pnt3f orientM2 = (cp3.orient - cp1.orient) * tensionFactor;
-        up = cp1.orient * h00 + orientM1 * h10 + cp2.orient * h01 +
-             orientM2 * h11;
-        up.normalize();
-
-        const float dh00 = 6.0f * t2 - 6.0f * localT;
-        const float dh10 = 3.0f * t2 - 4.0f * localT + 1.0f;
-        const float dh01 = -6.0f * t2 + 6.0f * localT;
-        const float dh11 = 3.0f * t2 - 2.0f * localT;
-        tangent = cp1.pos * dh00 + m1 * dh10 + cp2.pos * dh01 + m2 * dh11;
-        float tangentLenSq = tangent.x * tangent.x + tangent.y * tangent.y +
-                             tangent.z * tangent.z;
-        if (tangentLenSq > 1e-6f) {
-            tangent.normalize();
-        } else {
-            tangent = Pnt3f(0.0f, 0.0f, 1.0f);
-        }
+    Pnt3f tangent = cpPrev.pos * dWeights[0] + cpCurr.pos * dWeights[1] +
+                    cpNext.pos * dWeights[2] + cpNext2.pos * dWeights[3];
+    float tangentLenSq =
+        tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z;
+    if (tangentLenSq > 1e-6f) {
+        tangent.normalize();
     } else {
-        const ControlPoint& cp0 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) - 1, pointCount)];
-        const ControlPoint& cp1 = m_pTrack->points[segmentIndex];
-        const ControlPoint& cp2 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) + 1, pointCount)];
-        const ControlPoint& cp3 = m_pTrack->points[TrainView::wrapIndex(
-            static_cast<int>(segmentIndex) + 2, pointCount)];
-
-        const float t2 = localT * localT;
-        const float t3 = t2 * localT;
-        const float sixth = 1.0f / 6.0f;
-        const float b0 = (-t3 + 3.0f * t2 - 3.0f * localT + 1.0f) * sixth;
-        const float b1 = (3.0f * t3 - 6.0f * t2 + 4.0f) * sixth;
-        const float b2 =
-            (-3.0f * t3 + 3.0f * t2 + 3.0f * localT + 1.0f) * sixth;
-        const float b3 = t3 * sixth;
-
-        position = cp0.pos * b0 + cp1.pos * b1 + cp2.pos * b2 + cp3.pos * b3;
-        up = cp0.orient * b0 + cp1.orient * b1 + cp2.orient * b2 +
-             cp3.orient * b3;
-        up.normalize();
-
-        const float db0 = (-3.0f * t2 + 6.0f * localT - 3.0f) * sixth;
-        const float db1 = (9.0f * t2 - 12.0f * localT) * sixth;
-        const float db2 = (-9.0f * t2 + 6.0f * localT + 3.0f) * sixth;
-        const float db3 = (3.0f * t2) * sixth;
-        tangent = cp0.pos * db0 + cp1.pos * db1 + cp2.pos * db2 + cp3.pos * db3;
-        float tangentLenSq = tangent.x * tangent.x + tangent.y * tangent.y +
-                             tangent.z * tangent.z;
-        if (tangentLenSq > 1e-6f) {
-            tangent.normalize();
-        } else {
-            tangent = Pnt3f(0.0f, 0.0f, 1.0f);
-        }
+        tangent = Pnt3f(0.0f, 0.0f, 1.0f);
     }
 
     float upLenSq = up.x * up.x + up.y * up.y + up.z * up.z;
@@ -1126,110 +1095,113 @@ void TrainView::drawTrain(bool doingShadows) {
     up = right * tangent;
     up.normalize();
 
+    // Update train state
     trainPosition = position;
     trainForward = tangent;
 
-    const float halfExtent = 5.0f;
-    Pnt3f halfForward = tangent * halfExtent;
-    Pnt3f halfRight = right * halfExtent;
-    Pnt3f halfUp = up * halfExtent;
+    if (!tw->trainCam->value()) {
+        const float halfExtent = 5.0f;
+        Pnt3f halfForward = tangent * halfExtent;
+        Pnt3f halfRight = right * halfExtent;
+        Pnt3f halfUp = up * halfExtent;
 
-    Pnt3f center = position + halfUp;
+        Pnt3f center = position + halfUp;
 
-    Pnt3f frontTopRight = center + halfForward + halfRight + halfUp;
-    Pnt3f frontTopLeft = center + halfForward - halfRight + halfUp;
-    Pnt3f frontBottomRight = center + halfForward + halfRight - halfUp;
-    Pnt3f frontBottomLeft = center + halfForward - halfRight - halfUp;
-    Pnt3f backTopRight = center - halfForward + halfRight + halfUp;
-    Pnt3f backTopLeft = center - halfForward - halfRight + halfUp;
-    Pnt3f backBottomRight = center - halfForward + halfRight - halfUp;
-    Pnt3f backBottomLeft = center - halfForward - halfRight - halfUp;
+        Pnt3f frontTopRight = center + halfForward + halfRight + halfUp;
+        Pnt3f frontTopLeft = center + halfForward - halfRight + halfUp;
+        Pnt3f frontBottomRight = center + halfForward + halfRight - halfUp;
+        Pnt3f frontBottomLeft = center + halfForward - halfRight - halfUp;
+        Pnt3f backTopRight = center - halfForward + halfRight + halfUp;
+        Pnt3f backTopLeft = center - halfForward - halfRight + halfUp;
+        Pnt3f backBottomRight = center - halfForward + halfRight - halfUp;
+        Pnt3f backBottomLeft = center - halfForward - halfRight - halfUp;
 
-    if (!doingShadows) {
-        // set train color
-        // glColor3ub(200, 40, 40);
-        glColor3ub(255, 255, 255);
+        if (!doingShadows) {
+            // set train color
+            // glColor3ub(200, 40, 40);
+            glColor3ub(255, 255, 255);
+        }
+
+        glBegin(GL_QUADS);
+        // Front face
+        if (!doingShadows) {
+            glColor3ub(89, 110, 57);
+        }  // front face colored
+        glNormal3f(tangent.x, tangent.y, tangent.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+
+        // Back face
+        if (!doingShadows) {
+            glColor3ub(255, 255, 255);
+        }  // other faces default
+        glNormal3f(-tangent.x, -tangent.y, -tangent.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+
+        // Left face
+        if (!doingShadows) {
+            glColor3ub(255, 255, 255);
+        }
+        glNormal3f(-right.x, -right.y, -right.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+
+        // Right face
+        if (!doingShadows) {
+            glColor3ub(255, 255, 255);
+        }
+        glNormal3f(right.x, right.y, right.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+
+        // Top face
+        glNormal3f(up.x, up.y, up.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+
+        // Bottom face
+        glNormal3f(-up.x, -up.y, -up.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glEnd();
     }
-
-    glBegin(GL_QUADS);
-    // Front face
-    if (!doingShadows) {
-        glColor3ub(89, 110, 57);
-    }  // front face colored
-    glNormal3f(tangent.x, tangent.y, tangent.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-
-    // Back face
-    if (!doingShadows) {
-        glColor3ub(255, 255, 255);
-    }  // other faces default
-    glNormal3f(-tangent.x, -tangent.y, -tangent.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-
-    // Left face
-    if (!doingShadows) {
-        glColor3ub(255, 255, 255);
-    }
-    glNormal3f(-right.x, -right.y, -right.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-
-    // Right face
-    if (!doingShadows) {
-        glColor3ub(255, 255, 255);
-    }
-    glNormal3f(right.x, right.y, right.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-
-    // Top face
-    glNormal3f(up.x, up.y, up.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-
-    // Bottom face
-    glNormal3f(-up.x, -up.y, -up.z);
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-    glTexCoord2f(1.0f, 1.0f);
-    glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-    glTexCoord2f(0.0f, 1.0f);
-    glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-    glEnd();
 }
 
 //
