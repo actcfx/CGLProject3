@@ -995,58 +995,26 @@ void TrainView::drawTrack(bool doingShadows) {
 
     if (tw->splineBrowser->value() == 1) {
         // Linear
-        M[0][0] = 0.0f;
-        M[0][1] = 0.0f;
-        M[0][2] = -1.0f;
-        M[0][3] = 1.0f;
-        M[1][0] = 0.0f;
-        M[1][1] = 0.0f;
-        M[1][2] = 1.0f;
-        M[1][3] = 0.0f;
-        M[2][0] = 0.0f;
-        M[2][1] = 0.0f;
-        M[2][2] = 0.0f;
-        M[2][3] = 0.0f;
-        M[3][0] = 0.0f;
-        M[3][1] = 0.0f;
-        M[3][2] = 0.0f;
-        M[3][3] = 0.0f;
+        float linearM[4][4] = { { -1.0f, 1.0f, 0.0f, 0.0f },
+                                { 1.0f, 0.0f, 0.0f, 0.0f },
+                                { 0.0f, 0.0f, 0.0f, 0.0f },
+                                { 0.0f, 0.0f, 0.0f, 0.0f } };
+        memcpy(M, linearM, sizeof(linearM));
+
     } else if (tw->splineBrowser->value() == 2) {
         // Cardinal Cubic
-        M[0][0] = -0.5f;
-        M[0][1] = 1.0f;
-        M[0][2] = -0.5f;
-        M[0][3] = 0.0f;
-        M[1][0] = 1.5f;
-        M[1][1] = -2.5f;
-        M[1][2] = 0.0f;
-        M[1][3] = 1.0f;
-        M[2][0] = -1.5f;
-        M[2][1] = 2.0f;
-        M[2][2] = 0.5f;
-        M[2][3] = 0.0f;
-        M[3][0] = 0.5f;
-        M[3][1] = -0.5f;
-        M[3][2] = 0.0f;
-        M[3][3] = 0.0f;
+        float cardinalM[4][4] = { { -0.5f, 1.0f, -0.5f, 0.0f },
+                                  { 1.5f, -2.5f, 0.0f, 1.0f },
+                                  { -1.5f, 2.0f, 0.5f, 0.0f },
+                                  { 0.5f, -0.5f, 0.0f, 0.0f } };
+        memcpy(M, cardinalM, sizeof(cardinalM));
     } else {
         // B-Spline
-        M[0][0] = -1.0f / 6.0f;
-        M[0][1] = 0.5f;
-        M[0][2] = -0.5f;
-        M[0][3] = 1.0f / 6.0f;
-        M[1][0] = 0.5f;
-        M[1][1] = -1.0f;
-        M[1][2] = 0.0f;
-        M[1][3] = 2.0f / 3.0f;
-        M[2][0] = -0.5f;
-        M[2][1] = 0.5f;
-        M[2][2] = 0.5f;
-        M[2][3] = 1.0f / 6.0f;
-        M[3][0] = 1.0f / 6.0f;
-        M[3][1] = 0.0f;
-        M[3][2] = 0.0f;
-        M[3][3] = 0.0f;
+        float bSplineM[4][4] = { { -1.0f / 6.0f, 0.5f, -0.5f, 1.0f / 6.0f },
+                                 { 0.5f, -1.0f, 0.0f, 2.0f / 3.0f },
+                                 { -0.5f, 0.5f, 0.5f, 1.0f / 6.0f },
+                                 { 1.0f / 6.0f, 0.0f, 0.0f, 0.0f } };
+        memcpy(M, bSplineM, sizeof(bSplineM));
     }
 
     if (!doingShadows)
@@ -1054,29 +1022,28 @@ void TrainView::drawTrack(bool doingShadows) {
 
     glLineWidth(8.0f);
 
-    // Store curve points and compute perpendicular vectors for rail separation
-    std::vector<Pnt3f> centerPoints;
-    std::vector<Pnt3f> tangents;
-    std::vector<Pnt3f> orientations;
-    std::vector<Pnt3f>
-        rights;  // orthonormal right vectors (rail offset direction)
-    std::vector<Pnt3f> ups;  // orthonormal up vectors (use for vertical lift)
+    // Sampled geometry and frames along the spline
+    std::vector<Pnt3f> trackCenters;
+    std::vector<Pnt3f> trackTangents;
+    std::vector<Pnt3f> trackOrients;
+    std::vector<Pnt3f> rightVectors;
+    std::vector<Pnt3f> upVectors;
 
-    for (size_t s = 0; s < pointCount; ++s) {
-        size_t i0 = (s + pointCount - 1) % pointCount;
-        size_t i1 = s % pointCount;
-        size_t i2 = (s + 1) % pointCount;
-        size_t i3 = (s + 2) % pointCount;
+    for (size_t cpIndex = 0; cpIndex < pointCount; ++cpIndex) {
+        size_t idxPrev = (cpIndex + pointCount - 1) % pointCount;
+        size_t idxCurr = cpIndex % pointCount;
+        size_t idxNext = (cpIndex + 1) % pointCount;
+        size_t idxNext2 = (cpIndex + 2) % pointCount;
 
-        const Pnt3f& p0 = m_pTrack->points[i0].pos;
-        const Pnt3f& p1 = m_pTrack->points[i1].pos;
-        const Pnt3f& p2 = m_pTrack->points[i2].pos;
-        const Pnt3f& p3 = m_pTrack->points[i3].pos;
+        const Pnt3f& posPrev = m_pTrack->points[idxPrev].pos;
+        const Pnt3f& posCurr = m_pTrack->points[idxCurr].pos;
+        const Pnt3f& posNext = m_pTrack->points[idxNext].pos;
+        const Pnt3f& posNext2 = m_pTrack->points[idxNext2].pos;
 
-        const Pnt3f& o0 = m_pTrack->points[i0].orient;
-        const Pnt3f& o1 = m_pTrack->points[i1].orient;
-        const Pnt3f& o2 = m_pTrack->points[i2].orient;
-        const Pnt3f& o3 = m_pTrack->points[i3].orient;
+        const Pnt3f& orientPrev = m_pTrack->points[idxPrev].orient;
+        const Pnt3f& orientCurr = m_pTrack->points[idxCurr].orient;
+        const Pnt3f& orientNext = m_pTrack->points[idxNext].orient;
+        const Pnt3f& orientNext2 = m_pTrack->points[idxNext2].orient;
 
         for (int k = 0; k <= (int)DIVIDE_LINE; ++k) {
             float t = static_cast<float>(k) / DIVIDE_LINE;
@@ -1090,9 +1057,9 @@ void TrainView::drawTrack(bool doingShadows) {
             }
 
             // Compute position
-            Pnt3f position = p0 * weights[0] + p1 * weights[1] +
-                             p2 * weights[2] + p3 * weights[3];
-            centerPoints.push_back(position);
+            Pnt3f position = posPrev * weights[0] + posCurr * weights[1] +
+                             posNext * weights[2] + posNext2 * weights[3];
+            trackCenters.push_back(position);
 
             // Compute tangent (derivative of weights)
             float dT[4] = { 3.0f * t * t, 2.0f * t, 1.0f, 0.0f };
@@ -1101,27 +1068,28 @@ void TrainView::drawTrack(bool doingShadows) {
                 dWeights[r] = M[r][0] * dT[0] + M[r][1] * dT[1] +
                               M[r][2] * dT[2] + M[r][3] * dT[3];
             }
-            Pnt3f tangent = p0 * dWeights[0] + p1 * dWeights[1] +
-                            p2 * dWeights[2] + p3 * dWeights[3];
+            Pnt3f tangent = posPrev * dWeights[0] + posCurr * dWeights[1] +
+                            posNext * dWeights[2] + posNext2 * dWeights[3];
             tangent.normalize();
-            tangents.push_back(tangent);
+            trackTangents.push_back(tangent);
 
             // Compute orientation
-            Pnt3f orientation = o0 * weights[0] + o1 * weights[1] +
-                                o2 * weights[2] + o3 * weights[3];
+            Pnt3f orientation =
+                orientPrev * weights[0] + orientCurr * weights[1] +
+                orientNext * weights[2] + orientNext2 * weights[3];
             orientation.normalize();
-            orientations.push_back(orientation);
+            trackOrients.push_back(orientation);
         }
     }
 
     // Build frames from tangent and orientation, ensuring continuity
-    rights.resize(centerPoints.size());
-    ups.resize(centerPoints.size());
+    rightVectors.resize(trackCenters.size());
+    upVectors.resize(trackCenters.size());
 
-    if (!centerPoints.empty()) {
+    if (!trackCenters.empty()) {
         // Initialize first frame
-        Pnt3f tangent = tangents[0];
-        Pnt3f orient = orientations[0];
+        Pnt3f tangent = trackTangents[0];
+        Pnt3f orient = trackOrients[0];
 
         // Project orient perpendicular to tangent
         float dot =
@@ -1147,13 +1115,13 @@ void TrainView::drawTrack(bool doingShadows) {
         up = right * tangent;  // Ensure orthogonality
         up.normalize();
 
-        ups[0] = up;
-        rights[0] = right;
+        upVectors[0] = up;
+        rightVectors[0] = right;
 
         // Propagate frames, ensuring no sudden flips
-        for (size_t i = 1; i < centerPoints.size(); ++i) {
-            tangent = tangents[i];
-            orient = orientations[i];
+        for (size_t i = 1; i < trackCenters.size(); ++i) {
+            tangent = trackTangents[i];
+            orient = trackOrients[i];
 
             // Project orient perpendicular to tangent
             dot = tangent.x * orient.x + tangent.y * orient.y +
@@ -1162,14 +1130,15 @@ void TrainView::drawTrack(bool doingShadows) {
                        orient.z - dot * tangent.z);
             upLen = std::sqrt(up.x * up.x + up.y * up.y + up.z * up.z);
             if (upLen < 1e-6f) {
-                up = ups[i - 1];
+                up = upVectors[i - 1];
             } else {
                 up = Pnt3f(up.x / upLen, up.y / upLen, up.z / upLen);
             }
 
             // Check if up flipped relative to previous frame (dot product < 0)
-            float continuityDot =
-                up.x * ups[i - 1].x + up.y * ups[i - 1].y + up.z * ups[i - 1].z;
+            float continuityDot = up.x * upVectors[i - 1].x +
+                                  up.y * upVectors[i - 1].y +
+                                  up.z * upVectors[i - 1].z;
             if (continuityDot < 0.0f) {
                 // Flip to maintain continuity
                 up = Pnt3f(-up.x, -up.y, -up.z);
@@ -1180,17 +1149,17 @@ void TrainView::drawTrack(bool doingShadows) {
             up = right * tangent;
             up.normalize();
 
-            ups[i] = up;
-            rights[i] = right;
+            upVectors[i] = up;
+            rightVectors[i] = right;
         }
     }
 
     if (tw->arcLength && tw->arcLength->value()) {
-        const size_t sampleCount = centerPoints.size();
+        const size_t sampleCount = trackCenters.size();
         if (sampleCount >= 2) {
             std::vector<float> cumLen(sampleCount, 0.0f);
             for (size_t i = 1; i < sampleCount; ++i) {
-                Pnt3f delta = centerPoints[i] - centerPoints[i - 1];
+                Pnt3f delta = trackCenters[i] - trackCenters[i - 1];
                 float dist = std::sqrt(delta.x * delta.x + delta.y * delta.y +
                                        delta.z * delta.z);
                 cumLen[i] = cumLen[i - 1] + dist;
@@ -1227,9 +1196,9 @@ void TrainView::drawTrack(bool doingShadows) {
                                      a.z + (b.z - a.z) * t);
                     };
                     resampledCenters[sample] = lerpPoint(
-                        centerPoints[baseIdx], centerPoints[nextIdx], alpha);
+                        trackCenters[baseIdx], trackCenters[nextIdx], alpha);
                     resampledUps[sample] =
-                        lerpPoint(ups[baseIdx], ups[nextIdx], alpha);
+                        lerpPoint(upVectors[baseIdx], upVectors[nextIdx], alpha);
                 }
 
                 std::vector<Pnt3f> resampledTangents(sampleCount);
@@ -1244,7 +1213,7 @@ void TrainView::drawTrack(bool doingShadows) {
                                              tangent.y * tangent.y +
                                              tangent.z * tangent.z);
                     if (tanLen < 1e-6f) {
-                        tangent = tangents[sample];
+                        tangent = trackTangents[sample];
                     } else {
                         tangent = Pnt3f(tangent.x / tanLen, tangent.y / tanLen,
                                         tangent.z / tanLen);
@@ -1294,10 +1263,10 @@ void TrainView::drawTrack(bool doingShadows) {
                     prevRight = right;
                 }
 
-                centerPoints = std::move(resampledCenters);
-                tangents = std::move(resampledTangents);
-                rights = std::move(resampledRights);
-                ups = std::move(resampledUps);
+                trackCenters = std::move(resampledCenters);
+                trackTangents = std::move(resampledTangents);
+                rightVectors = std::move(resampledRights);
+                upVectors = std::move(resampledUps);
             }
         }
     }
@@ -1321,9 +1290,9 @@ void TrainView::drawTrack(bool doingShadows) {
                 size_t idx = s * ((int)DIVIDE_LINE + 1) + k;
 
                 // Use precomputed continuous frame
-                const Pnt3f& right = rights[idx];
-                const Pnt3f& up = ups[idx];
-                Pnt3f railPos = centerPoints[idx] +
+                const Pnt3f& right = rightVectors[idx];
+                const Pnt3f& up = upVectors[idx];
+                Pnt3f railPos = trackCenters[idx] +
                                 right * (side * railOffset) + up * railHeight;
                 glVertex3f(railPos.x, railPos.y, railPos.z);
             }
@@ -1337,19 +1306,19 @@ void TrainView::drawTrack(bool doingShadows) {
         glColor3ub(139, 90, 43);
     }
 
-    for (size_t tieIndex = 0; tieIndex < centerPoints.size();
+    for (size_t tieIndex = 0; tieIndex < trackCenters.size();
          tieIndex += tieInterval) {
-        const Pnt3f& right = rights[tieIndex];
-        const Pnt3f& up = ups[tieIndex];
+        const Pnt3f& right = rightVectors[tieIndex];
+        const Pnt3f& up = upVectors[tieIndex];
 
         // Extend the tie slightly beyond the rails
-        Pnt3f leftEnd = centerPoints[tieIndex] + right * (-railOffset * 1.3f);
-        Pnt3f rightEnd = centerPoints[tieIndex] + right * (railOffset * 1.3f);
+        Pnt3f leftEnd = trackCenters[tieIndex] + right * (-railOffset * 1.3f);
+        Pnt3f rightEnd = trackCenters[tieIndex] + right * (railOffset * 1.3f);
 
         const float tieWidth = 1.5f;
         const float tieThickness = 0.8f;
 
-        Pnt3f tangent = tangents[tieIndex];
+        Pnt3f tangent = trackTangents[tieIndex];
         Pnt3f halfWidth =
             tangent *
             (tieWidth *
