@@ -94,13 +94,6 @@ public:
     TrainWindow* tw;   // The parent of this display window
     CTrack* m_pTrack;  // The track of the entire scene
 
-    Shader* shader = nullptr;
-    Texture2D* texture = nullptr;
-    VAO* plane = nullptr;
-    UBO* common_matrices = nullptr;
-
-    float waveTime = 0.0f;
-
 private:
     // ---------- Lighting ----------
     void setLighting();
@@ -108,6 +101,7 @@ private:
     // Train position and orientation for spotlight
     Pnt3f trainPosition;
     Pnt3f trainForward;
+    Pnt3f trainUp;
 
     // ---------- Arc Length ----------
     struct ArcLengthTable {

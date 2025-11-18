@@ -215,7 +215,10 @@ void TrainWindow::advanceTrain(float dir)
     float delta = dir * sliderSpeed * baseStep;
 
     if (arcLength && arcLength->value()) {
-        delta *= 0.5f;
+        const int splineMode = trainView->tw->splineBrowser->value();
+        const size_t minPoints = (splineMode == 1) ? 2 : 4;
+        if (pointCount < minPoints)
+            return;
     }
 
     m_Track.trainU += delta;

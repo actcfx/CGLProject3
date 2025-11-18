@@ -356,17 +356,17 @@ void TrainView::setProjection()
         glRotatef(-90, 1, 0, 0);
     } else {
         // ---------- Train Cam ----------
-        const Pnt3f eyeOffset = trainForward * (10.0f);
-        const Pnt3f eye = trainPosition + eyeOffset + Pnt3f(0.0f, 4.0f, 0.0f);
+        // Position camera behind and above the train using train's local frame
+        const Pnt3f eyeOffset = trainForward * (-10.0f) + trainUp * 4.0f;
+        const Pnt3f eye = trainPosition + eyeOffset;
         const Pnt3f center = trainPosition + trainForward * 40.0f;
-        const Pnt3f up = Pnt3f(0.0f, 1.0f, 0.0f);
 
         glMatrixMode(GL_PROJECTION);
         gluPerspective(60.0, aspect, 0.1, 5000.0);
         glMatrixMode(GL_MODELVIEW);
         glLoadIdentity();
-        gluLookAt(eye.x, eye.y, eye.z, center.x, center.y, center.z, up.x, up.y,
-                  up.z);
+        gluLookAt(eye.x, eye.y, eye.z, center.x, center.y, center.z, trainUp.x,
+                  trainUp.y, trainUp.z);
     }
 
 #ifdef EXAMPLE_SOLUTION
@@ -412,11 +412,10 @@ void TrainView::drawStuff(bool doingShadows) {
     drawOden(doingShadows);
 
 #ifdef EXAMPLE_SOLUTION
-        // don't draw the train if you're looking out the front window
-        if (!tw->trainCam->value()) drawTrain(this, doingShadows);
+    // don't draw the train if you're looking out the front window
+    if (!tw->trainCam->value())
+        drawTrain(this, doingShadows);
 #endif
-
-
 }
 
 float TrainView::currentTension(float fallback) const {
@@ -868,155 +867,149 @@ void TrainView::drawTrain(bool doingShadows) {
         return static_cast<size_t>(wrapped);
     };
 
+    const auto buildArcLengthTable = [&](int mode) {
+        ArcLengthTable data;
+        if ((mode == 1 && pointCount < 2) || (mode != 1 && pointCount < 4)) {
+            return data;
+        }
+
+        data.segmentCount = pointCount;
+        data.segOffset.assign(pointCount + 1, 0.0f);
+        data.cumLen.assign(
+            pointCount,
+            std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+        data.tSamples.assign(
+            pointCount,
+            std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
+
+        const auto evalPosition = [&](size_t si, float t) {
+            if (pointCount == 0)
+                return Pnt3f(0, 0, 0);
+
+            if (mode == 1) {
+                const Pnt3f& p0 = m_pTrack->points[si % pointCount].pos;
+                const Pnt3f& p1 = m_pTrack->points[(si + 1) % pointCount].pos;
+                return (1.0f - t) * p0 + t * p1;
+            }
+
+            size_t prevIdx = wrapIndex(static_cast<int>(si) - 1, pointCount);
+            size_t nextIdx = (si + 1) % pointCount;
+            size_t next2Idx = (si + 2) % pointCount;
+
+            const Pnt3f& p0 = m_pTrack->points[prevIdx].pos;
+            const Pnt3f& p1 = m_pTrack->points[si].pos;
+            const Pnt3f& p2 = m_pTrack->points[nextIdx].pos;
+            const Pnt3f& p3 = m_pTrack->points[next2Idx].pos;
+
+            float basis[4][4] = { 0 };
+            buildBasisMatrix(mode, basis);
+
+            const float t2 = t * t;
+            const float t3 = t2 * t;
+            float Tvec[4] = { t3, t2, t, 1.0f };
+            float weights[4];
+            for (int r = 0; r < 4; ++r) {
+                weights[r] = basis[r][0] * Tvec[0] + basis[r][1] * Tvec[1] +
+                             basis[r][2] * Tvec[2] + basis[r][3] * Tvec[3];
+            }
+
+            return p0 * weights[0] + p1 * weights[1] + p2 * weights[2] +
+                   p3 * weights[3];
+        };
+
+        for (size_t si = 0; si < pointCount; ++si) {
+            Pnt3f prevPos = evalPosition(si, 0.0f);
+            for (int sample = 1; sample <= TrainView::ARCLEN_SAMPLES;
+                 ++sample) {
+                float t =
+                    static_cast<float>(sample) / TrainView::ARCLEN_SAMPLES;
+                data.tSamples[si][sample] = t;
+                Pnt3f current = evalPosition(si, t);
+                Pnt3f diff = current - prevPos;
+                float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y +
+                                       diff.z * diff.z);
+                data.cumLen[si][sample] = data.cumLen[si][sample - 1] + dist;
+                prevPos = current;
+            }
+            float segmentLength = data.cumLen[si][TrainView::ARCLEN_SAMPLES];
+            data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
+        }
+        data.totalLen = data.segOffset.back();
+        return data;
+    };
+
+    const auto mapLengthToSegment = [](const ArcLengthTable& data, float s,
+                                       size_t& segment, float& outT) {
+        if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
+            segment = 0;
+            outT = 0.0f;
+            return;
+        }
+
+        float clamped = s;
+        if (clamped <= 0.0f) {
+            segment = 0;
+            outT = 0.0f;
+            return;
+        }
+        if (clamped >= data.totalLen) {
+            segment = data.segmentCount - 1;
+            outT = 1.0f;
+            return;
+        }
+
+        size_t lo = 0;
+        size_t hi = data.segmentCount;
+        while (lo + 1 < hi) {
+            size_t mid = (lo + hi) / 2;
+            if (data.segOffset[mid] <= clamped)
+                lo = mid;
+            else
+                hi = mid;
+        }
+        segment = lo;
+        float localLength = clamped - data.segOffset[segment];
+        float segmentLength =
+            data.segOffset[segment + 1] - data.segOffset[segment];
+        if (segmentLength <= 1e-6f) {
+            outT = 0.0f;
+            return;
+        }
+
+        const auto& cum = data.cumLen[segment];
+        const auto& ts = data.tSamples[segment];
+        int loI = 0;
+        int hiI = TrainView::ARCLEN_SAMPLES;
+        while (loI < hiI) {
+            int mid = (loI + hiI) / 2;
+            if (cum[mid] < localLength)
+                loI = mid + 1;
+            else
+                hiI = mid;
+        }
+        int idx =
+            (loI < TrainView::ARCLEN_SAMPLES) ? loI : TrainView::ARCLEN_SAMPLES;
+        int prevIdx = (idx > 0) ? idx - 1 : 0;
+        float s0 = cum[prevIdx];
+        float s1 = cum[idx];
+        float t0 = ts[prevIdx];
+        float t1 = ts[idx];
+        float tau = 0.0f;
+        float denom = s1 - s0;
+        if (denom > 1e-6f)
+            tau = (localLength - s0) / denom;
+        if (tau < 0.0f)
+            tau = 0.0f;
+        else if (tau > 1.0f)
+            tau = 1.0f;
+        outT = t0 + tau * (t1 - t0);
+    };
+
     size_t segmentIndex =
         static_cast<size_t>(std::floor(wrappedParam)) % pointCount;
     float localT = wrappedParam - std::floor(wrappedParam);
 
     if (tw->arcLength && tw->arcLength->value()) {
-        const auto buildArcLengthTable = [&](int mode) {
-            ArcLengthTable data;
-            if ((mode == 1 && pointCount < 2) ||
-                (mode != 1 && pointCount < 4)) {
-                return data;
-            }
-
-            data.segmentCount = pointCount;
-            data.segOffset.assign(pointCount + 1, 0.0f);
-            data.cumLen.assign(
-                pointCount,
-                std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
-            data.tSamples.assign(
-                pointCount,
-                std::vector<float>(TrainView::ARCLEN_SAMPLES + 1, 0.0f));
-
-            const auto evalPosition = [&](size_t si, float t) {
-                if (pointCount == 0)
-                    return Pnt3f(0, 0, 0);
-
-                if (mode == 1) {
-                    const Pnt3f& p0 = m_pTrack->points[si % pointCount].pos;
-                    const Pnt3f& p1 =
-                        m_pTrack->points[(si + 1) % pointCount].pos;
-                    return (1.0f - t) * p0 + t * p1;
-                }
-
-                size_t prevIdx =
-                    wrapIndex(static_cast<int>(si) - 1, pointCount);
-                size_t nextIdx = (si + 1) % pointCount;
-                size_t next2Idx = (si + 2) % pointCount;
-
-                const Pnt3f& p0 = m_pTrack->points[prevIdx].pos;
-                const Pnt3f& p1 = m_pTrack->points[si].pos;
-                const Pnt3f& p2 = m_pTrack->points[nextIdx].pos;
-                const Pnt3f& p3 = m_pTrack->points[next2Idx].pos;
-
-                float basis[4][4] = { 0 };
-                buildBasisMatrix(mode, basis);
-
-                const float t2 = t * t;
-                const float t3 = t2 * t;
-                float Tvec[4] = { t3, t2, t, 1.0f };
-                float weights[4];
-                for (int r = 0; r < 4; ++r) {
-                    weights[r] = basis[r][0] * Tvec[0] + basis[r][1] * Tvec[1] +
-                                 basis[r][2] * Tvec[2] + basis[r][3] * Tvec[3];
-                }
-
-                return p0 * weights[0] + p1 * weights[1] + p2 * weights[2] +
-                       p3 * weights[3];
-            };
-
-            for (size_t si = 0; si < pointCount; ++si) {
-                Pnt3f prevPos = evalPosition(si, 0.0f);
-                for (int sample = 1; sample <= TrainView::ARCLEN_SAMPLES;
-                     ++sample) {
-                    float t =
-                        static_cast<float>(sample) / TrainView::ARCLEN_SAMPLES;
-                    data.tSamples[si][sample] = t;
-                    Pnt3f current = evalPosition(si, t);
-                    Pnt3f diff = current - prevPos;
-                    float dist = std::sqrt(diff.x * diff.x + diff.y * diff.y +
-                                           diff.z * diff.z);
-                    data.cumLen[si][sample] =
-                        data.cumLen[si][sample - 1] + dist;
-                    prevPos = current;
-                }
-                float segmentLength =
-                    data.cumLen[si][TrainView::ARCLEN_SAMPLES];
-                data.segOffset[si + 1] = data.segOffset[si] + segmentLength;
-            }
-            data.totalLen = data.segOffset.back();
-            return data;
-        };
-
-        const auto mapLengthToSegment = [](const ArcLengthTable& data, float s,
-                                           size_t& segment, float& outT) {
-            if (data.segmentCount == 0 || data.totalLen <= 1e-6f) {
-                segment = 0;
-                outT = 0.0f;
-                return;
-            }
-
-            float clamped = s;
-            if (clamped <= 0.0f) {
-                segment = 0;
-                outT = 0.0f;
-                return;
-            }
-            if (clamped >= data.totalLen) {
-                segment = data.segmentCount - 1;
-                outT = 1.0f;
-                return;
-            }
-
-            size_t lo = 0;
-            size_t hi = data.segmentCount;
-            while (lo + 1 < hi) {
-                size_t mid = (lo + hi) / 2;
-                if (data.segOffset[mid] <= clamped)
-                    lo = mid;
-                else
-                    hi = mid;
-            }
-            segment = lo;
-            float localLength = clamped - data.segOffset[segment];
-            float segmentLength =
-                data.segOffset[segment + 1] - data.segOffset[segment];
-            if (segmentLength <= 1e-6f) {
-                outT = 0.0f;
-                return;
-            }
-
-            const auto& cum = data.cumLen[segment];
-            const auto& ts = data.tSamples[segment];
-            int loI = 0;
-            int hiI = TrainView::ARCLEN_SAMPLES;
-            while (loI < hiI) {
-                int mid = (loI + hiI) / 2;
-                if (cum[mid] < localLength)
-                    loI = mid + 1;
-                else
-                    hiI = mid;
-            }
-            int idx = (loI < TrainView::ARCLEN_SAMPLES)
-                          ? loI
-                          : TrainView::ARCLEN_SAMPLES;
-            int prevIdx = (idx > 0) ? idx - 1 : 0;
-            float s0 = cum[prevIdx];
-            float s1 = cum[idx];
-            float t0 = ts[prevIdx];
-            float t1 = ts[idx];
-            float tau = 0.0f;
-            float denom = s1 - s0;
-            if (denom > 1e-6f)
-                tau = (localLength - s0) / denom;
-            if (tau < 0.0f)
-                tau = 0.0f;
-            else if (tau > 1.0f)
-                tau = 1.0f;
-            outT = t0 + tau * (t1 - t0);
-        };
-
         ArcLengthTable arcData = buildArcLengthTable(splineMode);
         if (arcData.totalLen > 1e-6f) {
             float normalized = wrappedParam / static_cast<float>(pointCount);
@@ -1069,12 +1062,68 @@ void TrainView::drawTrain(bool doingShadows) {
 
     Pnt3f tangent = cpPrev.pos * dWeights[0] + cpCurr.pos * dWeights[1] +
                     cpNext.pos * dWeights[2] + cpNext2.pos * dWeights[3];
+
     float tangentLenSq =
         tangent.x * tangent.x + tangent.y * tangent.y + tangent.z * tangent.z;
     if (tangentLenSq > 1e-6f) {
         tangent.normalize();
     } else {
         tangent = Pnt3f(0.0f, 0.0f, 1.0f);
+    }
+
+    // In arc length mode, the derivative direction might not match
+    // the arc length parameterization direction, so reverse if needed
+    if (tw->arcLength && tw->arcLength->value()) {
+        // Compute a small step forward in arc length space
+        float testStep = 0.01f;
+        float testParam = wrappedParam + testStep;
+        while (testParam >= static_cast<float>(pointCount)) {
+            testParam -= static_cast<float>(pointCount);
+        }
+
+        // Map the test parameter through arc length
+        ArcLengthTable arcData = buildArcLengthTable(splineMode);
+        if (arcData.totalLen > 1e-6f) {
+            size_t testSegIdx = segmentIndex;
+            float testLocalT = localT;
+
+            float testNormalized = testParam / static_cast<float>(pointCount);
+            if (testNormalized < 0.0f)
+                testNormalized += 1.0f;
+            float testTargetLength = testNormalized * arcData.totalLen;
+            mapLengthToSegment(arcData, testTargetLength, testSegIdx,
+                               testLocalT);
+
+            // Compute position at test parameter using arc length mapping
+            size_t tPrev =
+                wrapIndex(static_cast<int>(testSegIdx) - 1, pointCount);
+            size_t tCurr = testSegIdx;
+            size_t tNext = (testSegIdx + 1) % pointCount;
+            size_t tNext2 = (testSegIdx + 2) % pointCount;
+
+            const float tt2 = testLocalT * testLocalT;
+            const float tt3 = tt2 * testLocalT;
+            float tT[4] = { tt3, tt2, testLocalT, 1.0f };
+            float tWeights[4];
+            for (int r = 0; r < 4; ++r) {
+                tWeights[r] = M[r][0] * tT[0] + M[r][1] * tT[1] +
+                              M[r][2] * tT[2] + M[r][3] * tT[3];
+            }
+
+            Pnt3f testPos = m_pTrack->points[tPrev].pos * tWeights[0] +
+                            m_pTrack->points[tCurr].pos * tWeights[1] +
+                            m_pTrack->points[tNext].pos * tWeights[2] +
+                            m_pTrack->points[tNext2].pos * tWeights[3];
+
+            // Check if tangent points towards test position
+            Pnt3f toTest = testPos - position;
+            float dot = tangent.x * toTest.x + tangent.y * toTest.y +
+                        tangent.z * toTest.z;
+            if (dot < 0.0f) {
+                // Tangent points backwards, reverse it
+                tangent = Pnt3f(-tangent.x, -tangent.y, -tangent.z);
+            }
+        }
     }
 
     float upLenSq = up.x * up.x + up.y * up.y + up.z * up.z;
@@ -1099,6 +1148,7 @@ void TrainView::drawTrain(bool doingShadows) {
     // Update train state
     trainPosition = position;
     trainForward = tangent;
+    trainUp = up;
 
     if (!tw->trainCam->value()) {
         const float halfExtent = 5.0f;
@@ -1285,40 +1335,64 @@ void TrainView::drawOden(bool doingShadows) {
 
     // Front face (+Z)
     glNormal3f(0.0f, 0.0f, 1.0f);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
     // Back face (-Z)
     glNormal3f(0.0f, 0.0f, -1.0f);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
     // Left face (-X)
     glNormal3f(-1.0f, 0.0f, 0.0f);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
     // Right face (+X)
     glNormal3f(1.0f, 0.0f, 0.0f);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
     // Top face (+Y)
     glNormal3f(0.0f, 1.0f, 0.0f);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
     // Bottom face (-Y)
     glNormal3f(0.0f, -1.0f, 0.0f);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
-    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
-    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
+               halfPigBloodCakeDepth);
     glEnd();
 
     glPopMatrix();
