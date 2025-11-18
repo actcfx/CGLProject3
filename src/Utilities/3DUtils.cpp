@@ -1,13 +1,13 @@
 /************************************************************************
      File:        3DUtils.cpp
 
-     Author:
+     Author:     
                   Michael Gleicher, gleicher@cs.wisc.edu
      Modifier
                   Yu-Chi Lai, yu-chi@cs.wisc.edu
-
-     Comment:     some useful routines for writing 3D interactive
-					   programs written for CS638 -
+     
+     Comment:     some useful routines for writing 3D interactive 
+					   programs written for CS638 - 
 						Michael Gleicher, November 1999
                   re-written and expanded, October 2005
 
@@ -17,9 +17,9 @@
 						+	Drop shadow code
 						+	MousePole code
 						+ Quick and Dirty Quaternions
-
-	  Note:        The utilities in this file are meant to be
-						an example for	CS559 students to refer to. please
+   
+	  Note:        The utilities in this file are meant to be 
+						an example for	CS559 students to refer to. please 
 						follow the course policy on
 						using example code!
 
@@ -42,12 +42,12 @@ using std::vector;
 
 //*************************************************************************
 //
-// A utility function - draw a little cube at the origin (use a
+// A utility function - draw a little cube at the origin (use a 
 // transform to put it in the appropriate place)
 // note: we pass the size of the cube (rather than using a scale
 // transform) since we want our normals to stay unit length if possible
 //
-// Note:
+// Note: 
 //  1. This isn't necesarily the fastest way since I recompute each
 //       vertex.
 //  2. Notice that I don't keep all my polygons with the same orientations!
@@ -126,7 +126,7 @@ void drawFloor(float size, int nSquares)
 	for(x=0,xp=minX; x<nSquares; x++,xp+=xd) {
 		for(y=0,yp=minY,i=x; y<nSquares; y++,i++,yp+=yd) {
 			glColor4fv(i%2==1 ? floorColor1:floorColor2);
-			glNormal3f(0, 1, 0);
+			glNormal3f(0, 1, 0); 
 			glVertex3d(xp,      0, yp);
 			glVertex3d(xp,      0, yp + yd);
 			glVertex3d(xp + xd, 0, yp + yd);
@@ -144,7 +144,7 @@ void drawFloor(float size, int nSquares)
 // * A trick: because we only want to draw the shadows
 //            on the ground plane, when we draw the ground plane
 //            we'll set the stencil buffer to 1. then we'll only
-//            draw shadows where the stencil buffer is one, so we
+//            draw shadows where the stencil buffer is one, so we 
 //            don't have shadows floating in space
 //===============================================================================
 void setupFloor(void)
@@ -177,7 +177,7 @@ void setupObjects(void)
 //
 // These are cheap "hack" shadows - basically just squish the objects onto the floor.
 //
-// * We'll use a projection matrix to do the squishing (basically set the
+// * We'll use a projection matrix to do the squishing (basically set the 
 //   Y component to zero)
 // * We'll also need to turn off lighting (since we want the objects to be black)
 // * To make things look nice, we'll draw the shadows as transparent (so
@@ -269,7 +269,7 @@ inline double ABS(double x) { return (x<0) ? -x : x; };
 
 //*************************************************************************
 //
-// * When you have a mouse line, you want to pick a point where you think the user
+// * When you have a mouse line, you want to pick a point where you think the user 
 //   wants to drag to
 // * Idea: given a plane parallel to the floor, pick a point on that
 //         plane (where the line intersects it)
@@ -279,13 +279,13 @@ inline double ABS(double x) { return (x<0) ? -x : x; };
 //   1. Have an "elevator mode" where we use a plane perpindicular to the floor
 //   2. r1,r2 are two points on the line
 //      a. l is the initial position of the point - we need this to know where
-//         the plane is.
+//         the plane is. 
 //      b. r is the resulting position. it will share 1 of its coordinates
 //         with l, but will be on the line
 //===============================================================================
 void mousePoleGo(double r1x, double r1y, double r1z,
 									double r2x, double r2y, double r2z,
-									double lx, double ly, double lz,
+									double lx, double ly, double lz, 
 									double &rx, double &ry, double &rz,
 									bool elevator)
 //===============================================================================
@@ -298,14 +298,14 @@ void mousePoleGo(double r1x, double r1y, double r1z,
 		double zp = (lz - r1z) / zd;
 		rx = r1x + (r1x - r2x) * zp;
 		ry = r1y + (r1y - r2y) * zp;
-	  }
+	  } 
 	} else {
 	  double xd = r1x-r2x;
 	  if (ABS(xd) > .01) {
 		double xp = (lx-r1x) / xd;
 		rz = r1z + (r1z - r2z) * xp;
 		ry = r1y + (r1y - r2y) * xp;
-	  }
+	  } 
 	}
   } else {
 	double yd = r1y - r2y;

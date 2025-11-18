@@ -1,39 +1,39 @@
 /************************************************************************
      File:        ArcBallCam.h
 
-     Author:
+     Author:     
                   Michael Gleicher, gleicher@cs.wisc.edu
      Modifier
                   Yu-Chi Lai, yu-chi@cs.wisc.edu
 
-     Comment:
+     Comment:    
 						This is a camera UI for FlTk OpenGL Applications.
 
-
-						An arcball is a user interface for rotating an object
+	 
+						An arcball is a user interface for rotating an object 
 						around its very useful for looking around the world.
 
-						The actual mathematics to implement it are elegant,
-						but beyond the scope of CS559. This example code is
+						The actual mathematics to implement it are elegant, 
+						but beyond the scope of CS559. This example code is 
 						provided for you to use
-						without having to worry about the details of
+						without having to worry about the details of 
 						how it works.
 
      Note:
-						1.	A quickly hacked together implementation of ArcBall,
-							with lots of bits lifted from Ken Shoemake's original
+						1.	A quickly hacked together implementation of ArcBall, 
+							with lots of bits lifted from Ken Shoemake's original 
 							source in Graphics Gems	made into a nice C++ thing
-						2.	It is simplified a lot - the controller is always
+						2.	It is simplified a lot - the controller is always 
 						   at the origin,
 						3.	It has a fixed radius, it doesn't have constraints
 
-						4.	Added the double right click and the mousewheel -
+						4.	Added the double right click and the mousewheel - 
 							to make a much	better UI.
 
-					   5. the "ball" also stores all of the other camera
+					   5. the "ball" also stores all of the other camera 
 							parameters (position, FoV)
 
-						6. We take over the right mouse button - pass us your
+						6. We take over the right mouse button - pass us your 
 							events, and we'll take the ones we want.
 						7. the ALT button lets you do panning
 							double right click resets the arcball if you get lost
@@ -42,7 +42,7 @@
 						1) instantiate it in your Fl_Gl_Window class
 						2) call setup in the constructor of your window class
 						3) call its handle method inside of your handle method
-						4) use its SetProjection method when you need to set the
+						4) use its SetProjection method when you need to set the 
 							camera (like when drawing)
 
      Platform:    Visio Studio.Net 2003 (converted to 2005)
@@ -73,12 +73,12 @@
 // * Constructor
 //==========================================================================
 ArcBallCam::
-ArcBallCam()
+ArcBallCam() 
 	:	wind(0),
 		fieldOfView(40),
 		eyeX(0), eyeY(0), eyeZ(20),
-		initEyeZ(20),
-		mode(None),
+		initEyeZ(20), 
+		mode(None), 
 		panX(0), panY(0),
 		isx(0), isy(0), isz(0)
 //==========================================================================
@@ -113,7 +113,7 @@ setup(Fl_Gl_Window* _wind, float _fieldOfView, float _eyeZ,
 
 //**************************************************************************
 //
-// * Set up the camera projection
+// * Set up the camera projection 
 //==========================================================================
 void ArcBallCam::
 setProjection(bool doClear)
@@ -148,9 +148,9 @@ handle(int e)
 		case FL_PUSH:
 			mode = None;
 			// right mouse button down
-			if (Fl::event_button() == FL_RIGHT_MOUSE) {
+			if (Fl::event_button() == FL_RIGHT_MOUSE) { 
 				// double click? do a reset
-				if (Fl::event_clicks()) {
+				if (Fl::event_clicks()) {	
 					setup(wind,fieldOfView, initEyeZ, isx, isy, isz);
 					wind->damage(1);
 					return 1;
@@ -287,7 +287,7 @@ reset()
 
 //**************************************************************************
 //
-// *
+// * 
 //==========================================================================
 void ArcBallCam::
 spin(float x, float y, float z)
@@ -337,7 +337,7 @@ static void onUnitSphere(const float mx, const float my,
 
 //**************************************************************************
 //
-// *
+// * 
 //==========================================================================
 void ArcBallCam::
 computeNow(const float nowX, const float nowY)
@@ -381,7 +381,7 @@ computeNow(const float nowX, const float nowY)
 // * Set up constructor
 //==========================================================================
 Quat::
-Quat(float ix, float iy, float iz, float iw)
+Quat(float ix, float iy, float iz, float iw) 
 	:  x(ix), y(iy), z(iz), w(iw)
 //==========================================================================
 {
@@ -392,7 +392,7 @@ Quat(float ix, float iy, float iz, float iw)
 // * Default constructor
 //==========================================================================
 Quat::
-Quat()
+Quat() 
 	:  x(0), y(0), z(0), w(1)
 //==========================================================================
 {
@@ -403,7 +403,7 @@ Quat()
 // * Copy constructor
 //==========================================================================
 Quat::
-Quat(const Quat& q)
+Quat(const Quat& q) 
 	:  x(q.x), y(q.y), z(q.z), w(q.w)
 //==========================================================================
 {
@@ -458,7 +458,7 @@ conjugate() const
 
 //**************************************************************************
 //
-// *
+// * 
 //==========================================================================
 Quat Quat::
 operator* (const Quat& qR) const
