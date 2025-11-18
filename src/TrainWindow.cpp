@@ -101,7 +101,6 @@ TrainWindow::TrainWindow(const int x, const int y)
         pty += 30;
 
         // browser to select spline types
-        // TODO: make sure these choices are the same as what the code supports
         splineBrowser = new Fl_Browser(605, pty, 120, 75, "Spline Type");
         splineBrowser->type(2);  // select
         splineBrowser->callback((Fl_Callback*)damageCB, this);
@@ -154,7 +153,7 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         // ---------- Tension Slider ----------
         tensionSlider = new Fl_Value_Slider(665, pty, 130, 20, "Tension");
-        tensionSlider->range(0, 1);
+        tensionSlider->range(0.1, 1);
         tensionSlider->value(0.5);
         tensionSlider->align(FL_ALIGN_LEFT);
         tensionSlider->type(FL_HORIZONTAL);

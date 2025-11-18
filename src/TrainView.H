@@ -75,6 +75,8 @@ public:
 
     void drawTrain(bool doingShadows);
 
+    void drawOden(bool doingShadows);
+
     // setup the projection - assuming that the projection stack has been
     // cleared for you
     void setProjection();
@@ -118,7 +120,6 @@ private:
 
     static constexpr int ARCLEN_SAMPLES = 128;
 
-    static size_t wrapIndex(int index, size_t count);
     float currentTension(float fallback) const;
     void buildBasisMatrix(int mode, float out[4][4]) const;
 };

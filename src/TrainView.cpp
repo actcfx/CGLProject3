@@ -408,20 +408,15 @@ void TrainView::drawStuff(bool doingShadows) {
     // draw the train
     drawTrain(doingShadows);
 
-#ifdef EXAMPLE_SOLUTION
-    // don't draw the train if you're looking out the front window
-    if (!tw->trainCam->value())
-        drawTrain(this, doingShadows);
-#endif
-}
+    // draw the oden
+    drawOden(doingShadows);
 
-size_t TrainView::wrapIndex(int index, size_t count) {
-    if (count == 0)
-        return 0;
-    int wrapped = index % static_cast<int>(count);
-    if (wrapped < 0)
-        wrapped += static_cast<int>(count);
-    return static_cast<size_t>(wrapped);
+#ifdef EXAMPLE_SOLUTION
+        // don't draw the train if you're looking out the front window
+        if (!tw->trainCam->value()) drawTrain(this, doingShadows);
+#endif
+
+
 }
 
 float TrainView::currentTension(float fallback) const {
@@ -444,17 +439,15 @@ void TrainView::buildBasisMatrix(int mode, float out[4][4]) const {
     if (mode == 1) {
         memcpy(out, linearM, sizeof(linearM));
     } else if (mode == 2) {
-        // Cardinal now responds to the tension slider (dynamic)
-        float tension = currentTension(0.5f);  // default fallback for cardinal
+        float tension = currentTension(0.5f);
         float cardinalM[4][4] = {
-            { -tension, 2.0f * tension, -1.0f * tension, 0.0f },
-            { 3.0f * tension, -5.0f * tension, 0.0f, 2.0f * tension },
-            { -3.0f * tension, 4.0f * tension, tension, 0.0f },
+            { -tension, 2.0f * tension, -tension, 0.0f },
+            { 2.0f - tension, tension - 3.0f, 0.0f, 1.0f },
+            { tension - 2.0f, 3.0f - 2.0f * tension, tension, 0.0f },
             { tension, -tension, 0.0f, 0.0f }
         };
         memcpy(out, cardinalM, sizeof(cardinalM));
     } else {
-        // b-spline uses a fixed basis (no dynamic slider)
         const float tension = 1.0f / 6.0f;
         float bSplineM[4][4] = {
             { -tension, 3.0f * tension, -3.0f * tension, tension },
@@ -866,6 +859,15 @@ void TrainView::drawTrain(bool doingShadows) {
         wrappedParam += static_cast<float>(pointCount);
     }
 
+    const auto wrapIndex = [](int index, size_t count) -> size_t {
+        if (count == 0)
+            return 0;
+        int wrapped = index % static_cast<int>(count);
+        if (wrapped < 0)
+            wrapped += static_cast<int>(count);
+        return static_cast<size_t>(wrapped);
+    };
+
     size_t segmentIndex =
         static_cast<size_t>(std::floor(wrappedParam)) % pointCount;
     float localT = wrappedParam - std::floor(wrappedParam);
@@ -1025,8 +1027,7 @@ void TrainView::drawTrain(bool doingShadows) {
         }
     }
 
-    size_t idxPrev =
-        TrainView::wrapIndex(static_cast<int>(segmentIndex) - 1, pointCount);
+    size_t idxPrev = wrapIndex(static_cast<int>(segmentIndex) - 1, pointCount);
     size_t idxCurr = segmentIndex;
     size_t idxNext = (segmentIndex + 1) % pointCount;
     size_t idxNext2 = (segmentIndex + 2) % pointCount;
@@ -1202,6 +1203,125 @@ void TrainView::drawTrain(bool doingShadows) {
         glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
         glEnd();
     }
+}
+
+void TrainView::drawOden(bool doingShadows) {
+    // ----------- Tofu --------------
+    const float tofuWidth = 20.0f;
+    const float tofuDepth = 20.0f;
+    const float tofuHeight = 25.0f;
+    const float halfTofuWidth = tofuWidth / 2.0f;
+    const float halfTofuDepth = tofuDepth / 2.0f;
+    const float halfTofuHeight = tofuHeight / 2.0f;
+    if (!doingShadows) {
+        glColor3ub(150, 150, 150);
+    }
+
+    glPushMatrix();
+    glTranslatef(0.0f, halfTofuHeight, 0.0f);
+    glBegin(GL_QUADS);
+
+    // Front face (+Z)
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    // Back face (-Z)
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    // Left face (-X)
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    // Right face (+X)
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    // Top face (+Y)
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, halfTofuDepth);
+    glVertex3f(halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    glVertex3f(-halfTofuWidth, halfTofuHeight, -halfTofuDepth);
+    // Bottom face (-Y)
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, -halfTofuDepth);
+    glVertex3f(halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glVertex3f(-halfTofuWidth, -halfTofuHeight, halfTofuDepth);
+    glEnd();
+
+    glPopMatrix();
+
+    // ---------- Pork ball --------------
+    const float porkBallRadius = 10.0f;
+    glPushMatrix();
+    glTranslatef(0.0f, 0.6f * tofuHeight, 0.7f * tofuWidth);
+    GLUquadric* quad = gluNewQuadric();
+    gluQuadricNormals(quad, GLU_SMOOTH);
+    gluSphere(quad, porkBallRadius, 16, 16);
+    gluDeleteQuadric(quad);
+    glPopMatrix();
+
+    // ---------- Pig blood cake ----------
+    const float pigBloodCakeWidth = 20.0f;
+    const float pigBloodCakeDepth = 15.0f;
+    const float pigBloodCakeHeight = 10.0f;
+    const float halfPigBloodCakeWidth = pigBloodCakeWidth / 2.0f;
+    const float halfPigBloodCakeDepth = pigBloodCakeDepth / 2.0f;
+    const float halfPigBloodCakeHeight = pigBloodCakeHeight / 2.0f;
+
+    glPushMatrix();
+    glTranslatef(-0.7f * tofuWidth, 0.4f * tofuHeight, 0.0f);
+    glBegin(GL_QUADS);
+
+    // Front face (+Z)
+    glNormal3f(0.0f, 0.0f, 1.0f);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    // Back face (-Z)
+    glNormal3f(0.0f, 0.0f, -1.0f);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    // Left face (-X)
+    glNormal3f(-1.0f, 0.0f, 0.0f);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    // Right face (+X)
+    glNormal3f(1.0f, 0.0f, 0.0f);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    // Top face (+Y)
+    glNormal3f(0.0f, 1.0f, 0.0f);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    // Bottom face (-Y)
+    glNormal3f(0.0f, -1.0f, 0.0f);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, -halfPigBloodCakeDepth);
+    glVertex3f(halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight, halfPigBloodCakeDepth);
+    glEnd();
+
+    glPopMatrix();
 }
 
 //
