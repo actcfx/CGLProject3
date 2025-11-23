@@ -167,6 +167,8 @@ TrainWindow::TrainWindow(const int x, const int y)
         shaderBrowser->callback((Fl_Callback*)damageCB, this);
         shaderBrowser->add("Simple Church");
         shaderBrowser->add("Colorful Church");
+        shaderBrowser->add("Height Map Wave");
+        shaderBrowser->add("Sine Wave");
 
         shaderBrowser->select(2);
 

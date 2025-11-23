@@ -124,7 +124,17 @@ private:
     void setUBO();
     void initSimpleChurch();
     void initColorfulChurch();
+    void initHeightMapWave();
+    void initSineWave();
     void clearGlad();
 
     void drawPlane();
+
+    // -------- Water Simulation Parameters --------
+    std::vector<glm::vec2> waveDirections;
+    std::vector<float> waveWavelengths;
+    std::vector<float> waveAmplitudes;
+    std::vector<float> waveSpeeds;
+    glm::vec2 heightMapScroll = glm::vec2(0.05f, 0.02f);
+    float heightMapScale = 0.2f;
 };

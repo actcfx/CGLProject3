@@ -23,9 +23,11 @@ references)
 *************************************************************************/
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <vector>
+
 
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 // #include "GL/gl.h"
@@ -441,6 +443,131 @@ void TrainView::initColorfulChurch() {
     }
 }
 
+void TrainView::initHeightMapWave() {}
+
+void TrainView::initSineWave() {
+    if (!this->shader) {
+        this->shader = new Shader("./shaders/sineWave.vert", nullptr, nullptr,
+                                  nullptr, "./shaders/sineWave.frag");
+    }
+
+    if (!this->commonMatrices) {
+        this->commonMatrices = new UBO();
+        this->commonMatrices->size = 2 * sizeof(glm::mat4);
+        glGenBuffers(1, &this->commonMatrices->ubo);
+        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
+        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
+                     GL_STATIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
+
+    if (!this->plane) {
+        const int N = 100;
+        const float SIZE = 10.0f;
+
+        // Store wave parameters for GPU use
+        waveDirections = { glm::vec2(1.0f, 0.0f), glm::vec2(0.7f, 0.7f),
+                           glm::vec2(-0.6f, 0.8f) };
+        waveWavelengths = { 2.0f, 3.0f, 1.5f };
+        waveAmplitudes = { 0.10f, 0.05f, 0.07f };
+        waveSpeeds = { 1.0f, 0.8f, 1.2f };
+
+        std::vector<GLfloat> vertices;
+        std::vector<GLfloat> normals;
+        std::vector<GLfloat> texcoords;
+        std::vector<GLfloat> colors;
+        std::vector<GLuint> elements;
+
+        float half = SIZE / 2.0f;
+        for (int j = 0; j <= N; ++j) {
+            for (int i = 0; i <= N; ++i) {
+                float x = -half + SIZE * (float)i / N;
+                float z = -half + SIZE * (float)j / N;
+
+                vertices.push_back(x);
+                vertices.push_back(
+                    0.0f);  // base height, displaced in vertex shader
+                vertices.push_back(z);
+
+                normals.push_back(0.0f);
+                normals.push_back(1.0f);
+                normals.push_back(0.0f);
+
+                texcoords.push_back((float)i / N);
+                texcoords.push_back((float)j / N);
+
+                colors.push_back(0.0f);
+                colors.push_back(0.5f);
+                colors.push_back(0.6f);
+            }
+        }
+
+        for (int j = 0; j < N; ++j) {
+            for (int i = 0; i < N; ++i) {
+                GLuint topLeft = j * (N + 1) + i;
+                GLuint topRight = topLeft + 1;
+                GLuint bottomLeft = (j + 1) * (N + 1) + i;
+                GLuint bottomRight = bottomLeft + 1;
+
+                elements.push_back(topLeft);
+                elements.push_back(bottomLeft);
+                elements.push_back(topRight);
+
+                elements.push_back(topRight);
+                elements.push_back(bottomLeft);
+                elements.push_back(bottomRight);
+            }
+        }
+
+        this->plane = new VAO();
+        this->plane->element_amount = elements.size();
+
+        glGenVertexArrays(1, &this->plane->vao);
+        glGenBuffers(4, this->plane->vbo);
+        glGenBuffers(1, &this->plane->ebo);
+
+        glBindVertexArray(this->plane->vao);
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat),
+                     vertices.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(0);
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
+        glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(GLfloat),
+                     normals.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(1);
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
+        glBufferData(GL_ARRAY_BUFFER, texcoords.size() * sizeof(GLfloat),
+                     texcoords.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(2);
+
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
+        glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(GLfloat),
+                     colors.data(), GL_STATIC_DRAW);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(3);
+
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, elements.size() * sizeof(GLuint),
+                     elements.data(), GL_STATIC_DRAW);
+
+        glBindVertexArray(0);
+    }
+
+    if (!this->texture) {
+        this->texture = new Texture2D("./images/waterHeightMap.jpg");
+    }
+}
+
 void TrainView::clearGlad() {
     if (this->shader) {
         delete this->shader;
@@ -482,8 +609,40 @@ void TrainView::drawPlane() {
                        1, GL_FALSE, &modelMatrix[0][0]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
                  &glm::vec3(0.5f, 0.0f, 0.0f)[0]);
-    this->texture->bind(0);
+
+    if (this->texture) {
+        this->texture->bind(0);
+    } else {
+        Texture2D::unbind(0);
+    }
     glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"), 0);
+
+    // Time uniform for wave animation
+    static auto start = std::chrono::steady_clock::now();
+    float t =
+        std::chrono::duration<float>(std::chrono::steady_clock::now() - start)
+            .count();
+    glUniform1f(glGetUniformLocation(this->shader->Program, "u_time"), t);
+
+    // Wave uniforms
+    int waveCount = (int)waveDirections.size();
+    glUniform1i(glGetUniformLocation(this->shader->Program, "u_waveCount"),
+                waveCount);
+    if (waveCount > 0) {
+        glUniform2fv(glGetUniformLocation(this->shader->Program, "u_direction"),
+                     waveCount, &waveDirections[0][0]);
+        glUniform1fv(
+            glGetUniformLocation(this->shader->Program, "u_wavelength"),
+            waveCount, &waveWavelengths[0]);
+        glUniform1fv(glGetUniformLocation(this->shader->Program, "u_amplitude"),
+                     waveCount, &waveAmplitudes[0]);
+        glUniform1fv(glGetUniformLocation(this->shader->Program, "u_speed"),
+                     waveCount, &waveSpeeds[0]);
+    }
+    glUniform2fv(glGetUniformLocation(this->shader->Program, "u_scroll"), 1,
+                 &heightMapScroll[0]);
+    glUniform1f(glGetUniformLocation(this->shader->Program, "u_heightScale"),
+                heightMapScale);
 
     //bind VAO
     glBindVertexArray(this->plane->vao);
@@ -507,6 +666,14 @@ void TrainView::draw() {
         } else if (tw->shaderBrowser->value() == 2) {
             clearGlad();
             initColorfulChurch();
+        } else if (tw->shaderBrowser->value() == 3) {
+            // clearGlad();
+            // initHeightMapWave();
+        } else if (tw->shaderBrowser->value() == 4) {
+            clearGlad();
+            initSineWave();
+        } else {
+            clearGlad();
         }
     } else {
         throw std::runtime_error("Could not initialize GLAD!");
