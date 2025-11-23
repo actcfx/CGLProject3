@@ -28,7 +28,6 @@ references)
 #include <iostream>
 #include <vector>
 
-
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 // #include "GL/gl.h"
 #include <Fl/fl.h>
@@ -50,7 +49,7 @@ references)
 #define M_PI 3.14159265358979323846
 #endif
 
-#define DIVIDE_LINE 1000.0f
+#define DIVIDE_LINE 250.0f  // reduced for performance; was 1000
 #define GUAGE 5.0f
 
 //************************************************************************
@@ -568,6 +567,43 @@ void TrainView::initSineWave() {
     }
 }
 
+unsigned int TrainView::loadCubeMap(vector<std::string> faces) {
+    unsigned int textureID = 0;
+    glGenTextures(1, &textureID);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+    for (unsigned int i = 0; i < faces.size(); ++i) {
+        cv::Mat data = cv::imread(faces[i], cv::IMREAD_UNCHANGED);
+        if (data.empty()) {
+            std::cout << "Cubemap tex failed to load at path: " << faces[i]
+                      << std::endl;
+            continue;
+        }
+        GLenum srcFormat = GL_RGB;
+        GLenum internalFormat = GL_RGB8;
+        if (data.channels() == 3) {
+            srcFormat = GL_BGR;  // OpenCV loads BGR
+            internalFormat = GL_RGB8;
+        } else if (data.channels() == 4) {
+            srcFormat = GL_BGRA;
+            internalFormat = GL_RGBA8;
+        }
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internalFormat,
+                     data.cols, data.rows, 0, srcFormat, GL_UNSIGNED_BYTE,
+                     data.data);
+        data.release();
+    }
+
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    return textureID;
+}
+
 void TrainView::clearGlad() {
     if (this->shader) {
         delete this->shader;
@@ -615,6 +651,7 @@ void TrainView::drawPlane() {
     } else {
         Texture2D::unbind(0);
     }
+
     glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"), 0);
 
     // Time uniform for wave animation
@@ -658,38 +695,128 @@ void TrainView::drawPlane() {
 }
 
 void TrainView::draw() {
-    // ---------- Initialize GLAD ----------
-    if (gladLoadGL()) {
-        if (tw->shaderBrowser->value() == 1) {
-            clearGlad();
-            initSimpleChurch();
-        } else if (tw->shaderBrowser->value() == 2) {
-            clearGlad();
-            initColorfulChurch();
-        } else if (tw->shaderBrowser->value() == 3) {
-            // clearGlad();
-            // initHeightMapWave();
-        } else if (tw->shaderBrowser->value() == 4) {
-            clearGlad();
-            initSineWave();
-        } else {
-            clearGlad();
+    // ---------- Initialize GLAD (once) ----------
+    if (!glInited) {
+        if (!gladLoadGL()) {
+            throw std::runtime_error("Could not initialize GLAD!");
         }
+        glInited = true;
+    }
+
+    // Reinitialize content shaders depending on selection
+    if (tw->shaderBrowser->value() == 1) {
+        clearGlad();
+        initSimpleChurch();
+    } else if (tw->shaderBrowser->value() == 2) {
+        clearGlad();
+        initColorfulChurch();
+    } else if (tw->shaderBrowser->value() == 3) {
+        // clearGlad();
+        // initHeightMapWave();
+    } else if (tw->shaderBrowser->value() == 4) {
+        clearGlad();
+        initSineWave();
     } else {
-        throw std::runtime_error("Could not initialize GLAD!");
+        clearGlad();
+    }
+
+    if (!this->skyboxShader) {
+        this->skyboxShader =
+            new Shader("./shaders/skyBox.vert", nullptr, nullptr, nullptr,
+                       "./shaders/skyBox.frag");
+    }
+    if (skyboxTexture == 0) {
+        std::vector<std::string> texturesFaces = {
+            "./images/skybox/right.jpg", "./images/skybox/left.jpg",
+            "./images/skybox/top.jpg",   "./images/skybox/bottom.jpg",
+            "./images/skybox/front.jpg", "./images/skybox/back.jpg"
+        };
+        skyboxTexture = loadCubeMap(texturesFaces);
+    }
+
+    float cubeVertices[] = {
+        // positions          // texture Coords
+        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.5f,  -0.5f, -0.5f, 1.0f, 0.0f,
+        0.5f,  0.5f,  -0.5f, 1.0f, 1.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
+        -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
+
+        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, 0.5f,  -0.5f, 0.5f,  1.0f, 0.0f,
+        0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
+        -0.5f, 0.5f,  0.5f,  0.0f, 1.0f, -0.5f, -0.5f, 0.5f,  0.0f, 0.0f,
+
+        -0.5f, 0.5f,  0.5f,  1.0f, 0.0f, -0.5f, 0.5f,  -0.5f, 1.0f, 1.0f,
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -0.5f, 0.5f,  0.5f,  1.0f, 0.0f,
+
+        0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
+        0.5f,  -0.5f, -0.5f, 0.0f, 1.0f, 0.5f,  -0.5f, -0.5f, 0.0f, 1.0f,
+        0.5f,  -0.5f, 0.5f,  0.0f, 0.0f, 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+
+        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f,  -0.5f, -0.5f, 1.0f, 1.0f,
+        0.5f,  -0.5f, 0.5f,  1.0f, 0.0f, 0.5f,  -0.5f, 0.5f,  1.0f, 0.0f,
+        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+
+        -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
+        0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+        -0.5f, 0.5f,  0.5f,  0.0f, 0.0f, -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f
+    };
+    float skyboxVertices[] = {
+        // positions
+        -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
+        1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
+
+        -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
+        -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
+
+        1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
+
+        -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
+
+        -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
+        1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
+
+        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f,
+        1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f
+    };
+
+    // cube VAO
+    unsigned int cubeVAO, cubeVBO;
+    glGenVertexArrays(1, &cubeVAO);
+    glGenBuffers(1, &cubeVBO);
+    glBindVertexArray(cubeVAO);
+    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), &cubeVertices,
+                 GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                          (void*)0);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
+                          (void*)(3 * sizeof(float)));
+    // skybox VAO (cache)
+    if (skyboxVAO == 0) {
+        glGenVertexArrays(1, &skyboxVAO);
+        glGenBuffers(1, &skyboxVBO);
+        glBindVertexArray(skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices,
+                     GL_STATIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float),
+                              (void*)0);
+        glBindVertexArray(0);
     }
 
     // Set up the view port
     glViewport(0, 0, w(), h());
 
-    // clear the window, be sure to clear the Z-Buffer too
-    glClearColor(0, 0, .3f, 0);  // background should be blue
-
-    // we need to clear out the stencil buffer since we'll use
-    // it for shadows
+    // clear the window, be sure to clear the Z-Buffer too (single clear)
+    glClearColor(0, 0, .3f, 0);
     glClearStencil(0);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    glEnable(GL_DEPTH);
+    glEnable(GL_DEPTH_TEST);
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
@@ -702,10 +829,52 @@ void TrainView::draw() {
 
     setLighting();
 
+    // ---------- Draw the skybox ----------
+    glDepthMask(GL_FALSE);   // don't write depth
+    glDepthFunc(GL_LEQUAL);  // allow skybox depth at far plane
+    this->skyboxShader->Use();
+    glm::mat4 view_matrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+    glm::mat4 viewNoTrans =
+        glm::mat4(glm::mat3(view_matrix));  // remove translation
+    glm::mat4 projection_matrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
+    GLint viewLoc = glGetUniformLocation(this->skyboxShader->Program, "view");
+    GLint projLoc =
+        glGetUniformLocation(this->skyboxShader->Program, "projection");
+    if (viewLoc >= 0)
+        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &viewNoTrans[0][0]);
+    if (projLoc >= 0)
+        glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection_matrix[0][0]);
+    GLint samplerLoc =
+        glGetUniformLocation(this->skyboxShader->Program, "skybox");
+    if (samplerLoc >= 0)
+        glUniform1i(samplerLoc, 0);
+    glBindVertexArray(skyboxVAO);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
+    glBindVertexArray(0);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LESS);
+    glUseProgram(0);
+
     // ---------- Draw the floor ----------
     glUseProgram(0);
     setupFloor();
     drawFloor(200, 10);
+
+    glEnable(GL_LIGHTING);
+    setupObjects();
+
+    drawStuff();
+
+    // this time drawing is for shadows (except for top view)
+    if (!tw->topCam->value()) {
+        setupShadows();
+        drawStuff(true);
+        unsetupShadows();
+    }
 
     // ---------- Draw the objects and shadows ----------
     glEnable(GL_LIGHTING);

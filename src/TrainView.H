@@ -117,15 +117,23 @@ private:
 
     // ---------- Shaders and Textures ----------
     Shader* shader = nullptr;
+    Shader* skyboxShader = nullptr;
     Texture2D* texture = nullptr;
+    std::vector<Texture2D*> skyboxTextures = {};
     VAO* plane = nullptr;
     UBO* commonMatrices = nullptr;
+    // Performance-related cached GL objects for skybox
+    unsigned int skyboxVAO = 0;
+    unsigned int skyboxVBO = 0;
+    unsigned int skyboxTexture = 0;
+    bool glInited = false;
 
     void setUBO();
     void initSimpleChurch();
     void initColorfulChurch();
     void initHeightMapWave();
     void initSineWave();
+    unsigned int loadCubeMap(std::vector<std::string> faces);
     void clearGlad();
 
     void drawPlane();
