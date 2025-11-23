@@ -28,11 +28,11 @@
 #include <FL/Fl_Box.h>
 #include <FL/fl.h>
 
-
 // for using the real time clock
 #include <time.h>
 
 #include "CallBacks.H"
+#include "RenderUtilities/Shader.h"
 #include "TrainView.H"
 #include "TrainWindow.H"
 
@@ -158,6 +158,17 @@ TrainWindow::TrainWindow(const int x, const int y)
         tensionSlider->align(FL_ALIGN_LEFT);
         tensionSlider->type(FL_HORIZONTAL);
         tensionSlider->callback((Fl_Callback*)damageCB, this);
+
+        pty += 30;
+
+        // ---------- Shader Browser ----------
+        shaderBrowser = new Fl_Browser(605, pty, 120, 75, "Shader");
+        shaderBrowser->type(2);  // select
+        shaderBrowser->callback((Fl_Callback*)damageCB, this);
+        shaderBrowser->add("Simple Church");
+        shaderBrowser->add("Colorful Church");
+
+        shaderBrowser->select(2);
 
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);

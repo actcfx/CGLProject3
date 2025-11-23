@@ -72,9 +72,7 @@ public:
     void drawStuff(bool doingShadows = false);
 
     void drawTrack(bool doingShadows);
-
     void drawTrain(bool doingShadows);
-
     void drawOden(bool doingShadows);
 
     // setup the projection - assuming that the projection stack has been
@@ -116,4 +114,17 @@ private:
 
     float currentTension(float fallback) const;
     void buildBasisMatrix(int mode, float out[4][4]) const;
+
+    // ---------- Shaders and Textures ----------
+    Shader* shader = nullptr;
+    Texture2D* texture = nullptr;
+    VAO* plane = nullptr;
+    UBO* commonMatrices = nullptr;
+
+    void setUBO();
+    void initSimpleChurch();
+    void initColorfulChurch();
+    void clearGlad();
+
+    void drawPlane();
 };

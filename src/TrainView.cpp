@@ -263,10 +263,251 @@ void TrainView::setLighting() {
     }
 }
 
-void TrainView::draw() {
-    // initialized glad
-    if (gladLoadGL()) {
+void TrainView::setUBO() {
+    float wdt = this->pixel_w();
+    float hgt = this->pixel_h();
 
+    glm::mat4 viewMatrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
+    // HMatrix view matrix;
+    // this-›arcball -getMatrix(view_matrix);
+
+    glm::mat4 projectionMatrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
+    // projection_matrix = glm::perspective(glm::radians(this-›arcball.getFov()),
+    // (GLfloat)wdt / (GLfloat)hgt, 0.01f, 1000.f);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4),
+                    &projectionMatrix[0][0]);
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4),
+                    &viewMatrix[0][0]);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void TrainView::initSimpleChurch() {
+    if (!this->shader) {
+        this->shader =
+            new Shader("./shaders/simpleChurch.vert", nullptr, nullptr, nullptr,
+                       "./shaders/simpleChurch.frag");
+    }
+
+    if (!this->commonMatrices) {
+        this->commonMatrices = new UBO();
+        this->commonMatrices->size = 2 * sizeof(glm::mat4);
+        glGenBuffers(1, &this->commonMatrices->ubo);
+        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
+        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
+                     GL_STATIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
+
+    if (!this->plane) {
+        GLfloat vertices[] = { -0.5f, 0.0f, -0.5f, -0.5f, 0.0f, 0.5f,
+                               0.5f,  0.0f, 0.5f,  0.5f,  0.0f, -0.5f };
+        GLfloat normal[] = { 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
+                             0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f };
+        GLfloat textureCoordinate[] = { 0.0f, 0.0f, 1.0f, 0.0f,
+                                        1.0f, 1.0f, 0.0f, 1.0f };
+        GLuint element[] = { 0, 1, 2, 0, 2, 3 };
+
+        this->plane = new VAO;
+        this->plane->element_amount = sizeof(element) / sizeof(GLuint);
+        glGenVertexArrays(1, &this->plane->vao);
+        glGenBuffers(3, this->plane->vbo);
+        glGenBuffers(1, &this->plane->ebo);
+        glBindVertexArray(this->plane->vao);
+
+        // Position attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
+                     GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(0);
+
+        // Normal attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(normal), normal, GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(1);
+
+        // Texture Coordinate attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(textureCoordinate),
+                     textureCoordinate, GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(2);
+        //Element attribute
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(element), element,
+                     GL_STATIC_DRAW);
+
+        // Unbind VAO
+        glBindVertexArray(0);
+    }
+
+    if (!this->texture) {
+        this->texture = new Texture2D("./images/church.png");
+    }
+}
+
+void TrainView::initColorfulChurch() {
+    if (!this->shader) {
+        this->shader =
+            new Shader("./shaders/colorfulChurch.vert", nullptr, nullptr,
+                       nullptr, "./shaders/colorfulChurch.frag");
+    }
+
+    if (!this->commonMatrices) {
+        this->commonMatrices = new UBO();
+        this->commonMatrices->size = 2 * sizeof(glm::mat4);
+        glGenBuffers(1, &this->commonMatrices->ubo);
+        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
+        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
+                     GL_STATIC_DRAW);
+        glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    }
+
+    if (!this->plane) {
+        GLfloat vertices[] = { -0.5f, 0.0f, -sqrt(3.0f) / 6.0f,
+                               0.5f,  0.0f, -sqrt(3.0f) / 6.0f,
+                               0.0f,  0.0f, sqrt(3.0f) / 3.0f };
+
+        GLfloat normal[] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
+                             1.0f, 0.0f, 0.0f, 1.0f };
+
+        GLfloat texture_coordinate[] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
+
+        GLuint element[] = { 0, 1, 2 };
+
+        GLfloat colors[] = {
+            1.0f, 0.0f, 0.0f,  // Red
+            0.0f, 1.0f, 0.0f,  // Green
+            0.0f, 0.0f, 1.0f   // Blue
+        };
+
+        this->plane = new VAO();
+        this->plane->element_amount = sizeof(element) / sizeof(GLuint);
+        glGenVertexArrays(1, &this->plane->vao);
+        glGenBuffers(4, this->plane->vbo);
+        glGenBuffers(1, &this->plane->ebo);
+
+        glBindVertexArray(this->plane->vao);
+
+        // Position attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
+                     GL_STATIC_DRAW);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(0);
+
+        // Normal attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(normal), normal, GL_STATIC_DRAW);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(1);
+
+        // Texture Coordinate attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(texture_coordinate),
+                     texture_coordinate, GL_STATIC_DRAW);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(2);
+
+        // Element attribute
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(element), element,
+                     GL_STATIC_DRAW);
+
+        // Color attribute
+        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
+        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
+                              (GLvoid*)0);
+        glEnableVertexAttribArray(3);
+
+        // Unbind VAO
+        glBindVertexArray(0);
+    }
+
+    if (!this->texture) {
+        this->texture = new Texture2D("./images/church.png");
+    }
+}
+
+void TrainView::clearGlad() {
+    if (this->shader) {
+        delete this->shader;
+        this->shader = nullptr;
+    }
+
+    if (this->commonMatrices) {
+        glDeleteBuffers(1, &this->commonMatrices->ubo);
+        delete this->commonMatrices;
+        this->commonMatrices = nullptr;
+    }
+
+    if (this->plane) {
+        glDeleteVertexArrays(1, &this->plane->vao);
+        glDeleteBuffers(4, this->plane->vbo);
+        glDeleteBuffers(1, &this->plane->ebo);
+        delete this->plane;
+        this->plane = nullptr;
+    }
+
+    if (this->texture) {
+        delete this->texture;
+        this->texture = nullptr;
+    }
+}
+
+void TrainView::drawPlane() {
+    setUBO();
+    glBindBufferRange(GL_UNIFORM_BUFFER, /*binding point*/ 0,
+                      this->commonMatrices->ubo, 0, this->commonMatrices->size);
+
+    //bind shader
+    this->shader->Use();
+
+    glm::mat4 modelMatrix = glm::mat4();
+    modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
+    modelMatrix = glm::scale(modelMatrix, glm::vec3(10.0f, 10.0f, 10.0f));
+    glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
+                       1, GL_FALSE, &modelMatrix[0][0]);
+    glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
+                 &glm::vec3(0.5f, 0.0f, 0.0f)[0]);
+    this->texture->bind(0);
+    glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"), 0);
+
+    //bind VAO
+    glBindVertexArray(this->plane->vao);
+
+    glDrawElements(GL_TRIANGLES, this->plane->element_amount, GL_UNSIGNED_INT,
+                   0);
+
+    //unbind VAO
+    glBindVertexArray(0);
+
+    //unbind shader(switch to fixed pipeline)
+    glUseProgram(0);
+}
+
+void TrainView::draw() {
+    // ---------- Initialize GLAD ----------
+    if (gladLoadGL()) {
+        if (tw->shaderBrowser->value() == 1) {
+            clearGlad();
+            initSimpleChurch();
+        } else if (tw->shaderBrowser->value() == 2) {
+            clearGlad();
+            initColorfulChurch();
+        }
     } else {
         throw std::runtime_error("Could not initialize GLAD!");
     }
@@ -294,23 +535,14 @@ void TrainView::draw() {
 
     setLighting();
 
-    //*********************************************************************
-    // now draw the ground plane
-    //*********************************************************************
-    // set to opengl fixed pipeline(use opengl 1.x draw function)
+    // ---------- Draw the floor ----------
     glUseProgram(0);
-
     setupFloor();
-    // glDisable(GL_LIGHTING);
     drawFloor(200, 10);
 
-    //*********************************************************************
-    // now draw the object and we need to do it twice
-    // once for real, and then once for shadows
-    //*********************************************************************
+    // ---------- Draw the objects and shadows ----------
     glEnable(GL_LIGHTING);
     setupObjects();
-
     drawStuff();
 
     // this time drawing is for shadows (except for top view)
@@ -319,6 +551,9 @@ void TrainView::draw() {
         drawStuff(true);
         unsetupShadows();
     }
+
+    // ---------- Draw the plane ----------
+    drawPlane();
 }
 
 //************************************************************************
@@ -1256,6 +1491,13 @@ void TrainView::drawTrain(bool doingShadows) {
 }
 
 void TrainView::drawOden(bool doingShadows) {
+    const float offsetX = 50.0f;
+    const float offsetY = 0.0f;
+    const float offsetZ = -30.0f;
+
+    glPushMatrix();
+    glTranslatef(offsetX, offsetY, offsetZ);
+
     // ----------- Tofu --------------
     const float tofuWidth = 20.0f;
     const float tofuDepth = 20.0f;
@@ -1394,6 +1636,8 @@ void TrainView::drawOden(bool doingShadows) {
     glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
                halfPigBloodCakeDepth);
     glEnd();
+
+    glPopMatrix();
 
     glPopMatrix();
 }
