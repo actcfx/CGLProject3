@@ -169,6 +169,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         shaderBrowser->add("Colorful Church");
         shaderBrowser->add("Height Map Wave");
         shaderBrowser->add("Sine Wave");
+        shaderBrowser->add("Water Reflect");
 
         shaderBrowser->select(2);
 

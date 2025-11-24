@@ -128,13 +128,28 @@ private:
     unsigned int skyboxTexture = 0;
     bool glInited = false;
 
+    // ---------- Water Reflection & Refraction ----------
+    unsigned int reflectionFBO = 0;
+    unsigned int reflectionTexture = 0;
+    unsigned int reflectionDepthRBO = 0;
+    unsigned int refractionFBO = 0;
+    unsigned int refractionTexture = 0;
+    unsigned int refractionDepthTexture = 0;
+    int waterFBOWidth = 1024;
+    int waterFBOHeight = 1024;
+    float waterHeight = 10.0f;
+
     void setUBO();
     void initSimpleChurch();
     void initColorfulChurch();
     void initHeightMapWave();
     void initSineWave();
+    void initReflectionWater();
     unsigned int loadCubeMap(std::vector<std::string> faces);
     void clearGlad();
+    void initWaterFBOs();
+    void renderReflection();
+    void renderRefraction();
 
     void drawPlane();
 
