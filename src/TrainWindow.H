@@ -98,6 +98,8 @@ public:
 
     Fl_Browser* shaderBrowser;
 
+    Fl_Button* pixelizeButton;
+
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
 #ifdef EXAMPLE_SOLUTION

@@ -153,11 +153,25 @@ private:
 
     void drawPlane();
 
-    // -------- Water Simulation Parameters --------
+    // --------- Water Simulation Parameters ---------
     std::vector<glm::vec2> waveDirections;
     std::vector<float> waveWavelengths;
     std::vector<float> waveAmplitudes;
     std::vector<float> waveSpeeds;
     glm::vec2 heightMapScroll = glm::vec2(0.05f, 0.02f);
     float heightMapScale = 0.2f;
+
+    // --------- Frame buffer object for pixelization ----------
+    void initPixelizationFBO();
+    void freePixelizationFBO();
+    void drawScreenQuad();
+
+    GLuint pixelizationFBO = 0;
+    GLuint pixelizationTexture = 0;
+    GLuint pixelizationRBO = 0;
+
+    GLuint quadVAO = 0;
+    GLuint quadVBO = 0;
+
+    Shader* pixelizationShader = nullptr;
 };

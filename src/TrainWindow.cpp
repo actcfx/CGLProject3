@@ -173,6 +173,12 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         shaderBrowser->select(2);
 
+        pty += 110;
+
+        // ---------- Pixelization ----------
+        pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
+        togglify(pixelizeButton, 0);
+
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);
 #endif
