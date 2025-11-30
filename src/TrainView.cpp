@@ -28,13 +28,13 @@ references)
 #include <iostream>
 #include <vector>
 
-#include <Fl/fl.h>
 #include <glad/glad.h>
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "ControlPoint.H"
+#include "FrameBuffer.hpp"
 #include "GL/glu.h"
 #include "TrainView.H"
 #include "TrainWindow.H"
@@ -854,95 +854,6 @@ void TrainView::renderRefraction() {
                prevViewport[3]);
 }
 
-void TrainView::initPixelizationFBO() {
-    if (!pixelizationShader) {
-        pixelizationShader =
-            new Shader("./shaders/pixelization.vert", nullptr, nullptr, nullptr,
-                       "./shaders/pixelization.frag");
-    }
-
-    if (pixelizationFBO == 0) {
-        // Create framebuffer
-        glGenFramebuffers(1, &pixelizationFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, pixelizationFBO);
-
-        // Create texture to hold color buffer
-        glGenTextures(1, &pixelizationTexture);
-        glBindTexture(GL_TEXTURE_2D, pixelizationTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, this->pixel_w(), this->pixel_h(),
-                     0, GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, pixelizationTexture, 0);
-
-        // Create renderbuffer for depth and stencil
-        glGenRenderbuffers(1, &pixelizationRBO);
-        glBindRenderbuffer(GL_RENDERBUFFER, pixelizationRBO);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8,
-                              this->pixel_w(), this->pixel_h());
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT,
-                                  GL_RENDERBUFFER, pixelizationRBO);
-
-        // Check framebuffer completeness
-        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) !=
-            GL_FRAMEBUFFER_COMPLETE) {
-            std::cout << "ERROR::FRAMEBUFFER:: Framebuffer is not complete!"
-                      << std::endl;
-        }
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
-    if (quadVAO == 0) {
-        float quadVertices[] = {
-            // positions   // texCoords
-            -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
-            1.0f,  1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
-        };
-        glGenVertexArrays(1, &quadVAO);
-        glGenBuffers(1, &quadVBO);
-        glBindVertexArray(quadVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices,
-                     GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                              (void*)0);
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                              (void*)(2 * sizeof(float)));
-        glBindVertexArray(0);
-    }
-}
-
-void TrainView::freePixelizationFBO() {
-    if (pixelizationShader) {
-        delete pixelizationShader;
-        pixelizationShader = nullptr;
-    }
-    if (pixelizationTexture != 0) {
-        glDeleteTextures(1, &pixelizationTexture);
-        pixelizationTexture = 0;
-    }
-    if (pixelizationRBO != 0) {
-        glDeleteRenderbuffers(1, &pixelizationRBO);
-        pixelizationRBO = 0;
-    }
-    if (pixelizationFBO != 0) {
-        glDeleteFramebuffers(1, &pixelizationFBO);
-        pixelizationFBO = 0;
-    }
-    if (quadVAO != 0) {
-        glDeleteVertexArrays(1, &quadVAO);
-        quadVAO = 0;
-    }
-    if (quadVBO != 0) {
-        glDeleteBuffers(1, &quadVBO);
-        quadVBO = 0;
-    }
-}
-
 unsigned int TrainView::loadCubeMap(vector<std::string> faces) {
     unsigned int textureID = 0;
     glGenTextures(1, &textureID);
@@ -980,6 +891,24 @@ unsigned int TrainView::loadCubeMap(vector<std::string> faces) {
     return textureID;
 }
 
+void TrainView::initFrameBufferShader() {
+    if (!pixelShader)
+        pixelShader =
+            new Shader("./shaders/pixelization.vert", nullptr, nullptr, nullptr,
+                       "./shaders/pixelization.frag");
+    if (!toonShader)
+        toonShader = new Shader("./shaders/toon.vert", nullptr, nullptr,
+                                nullptr, "./shaders/toon.frag");
+
+    // Initialize Buffer if null
+    if (!mainFrameBuffer) {
+        mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
+    }
+    if (!tempFrameBuffer) {
+        tempFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
+    }
+}
+
 void TrainView::clearGlad() {
     if (this->shader) {
         delete this->shader;
@@ -1004,9 +933,6 @@ void TrainView::clearGlad() {
         delete this->texture;
         this->texture = nullptr;
     }
-
-    // Free pixelization resources if present
-    freePixelizationFBO();
 }
 
 void TrainView::drawPlane() {
@@ -1120,12 +1046,6 @@ void TrainView::drawPlane() {
     glUseProgram(0);
 }
 
-void TrainView::drawScreenQuad() {
-    glBindVertexArray(quadVAO);
-    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-    glBindVertexArray(0);
-}
-
 void TrainView::draw() {
     // ---------- Initialize GLAD ----------
     if (!glInited) {
@@ -1155,23 +1075,11 @@ void TrainView::draw() {
         clearGlad();
     }
 
-    // ---------- Initialize pixelization FBO ----------
-    if (tw->pixelizeButton->value()) {
-        initPixelizationFBO();
-        // Resize texture if window size changed
-        glBindTexture(GL_TEXTURE_2D, pixelizationTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, w(), h(), 0, GL_RGB,
-                     GL_UNSIGNED_BYTE, NULL);
-        glBindRenderbuffer(GL_RENDERBUFFER, pixelizationRBO);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, w(), h());
-        glBindTexture(GL_TEXTURE_2D, 0);
-    } else {
-        if (pixelizationFBO != 0 || pixelizationTexture != 0 ||
-            pixelizationRBO != 0 || quadVAO != 0 || quadVBO != 0 ||
-            pixelizationShader != nullptr) {
-            freePixelizationFBO();
-        }
-    }
+    // ---------- Initialize Framebuffer Shaders ----------
+    initFrameBufferShader();
+    mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
+    tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
+
 
     // ---------- Initialize Skybox ----------
     if (!this->skyboxShader) {
@@ -1278,21 +1186,20 @@ void TrainView::draw() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     glEnable(GL_DEPTH_TEST);
 
-    if (tw->pixelizeButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, pixelizationFBO);
-        glViewport(0, 0, w(), h());
-        glClearColor(0, 0, .3f, 0);
-        glClearStencil(0);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT |
-                GL_STENCIL_BUFFER_BIT);
-        glEnable(GL_DEPTH_TEST);
+    // ---------- Bind framebuffer ----------
+    if (tw->pixelizeButton->value() || tw->toonButton->value()) {
+        mainFrameBuffer->bind();
     } else {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
         glViewport(0, 0, w(), h());
-        glEnable(GL_DEPTH_TEST);
     }
 
-    // prepare for projection
+    glClearColor(0, 0, .3f, 0);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+
+    // ---------- Set up Projection and Lighting ----------
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
 
@@ -1379,38 +1286,77 @@ void TrainView::draw() {
     // ---------- Draw the plane ----------
     drawPlane();
 
-    // ---------- Pixelization Post-Process ----------
-    if (tw->pixelizeButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, w(), h());
-
-        glDisable(GL_DEPTH_TEST);
-
-        glClearColor(1.0f, 1.0f, 1.0f, 1.0f);
+    // ---------- Post processing ----------
+    glDisable(GL_DEPTH_TEST);
+    if (tw->toonButton->value() && tw->pixelizeButton->value()) {
+        // Step A: Apply Toon Shader (Main -> Temp)
+        tempFrameBuffer->bind();  // Draw into temporary buffer
         glClear(GL_COLOR_BUFFER_BIT);
 
-        this->pixelizationShader->Use();
-
-        glUniform1i(glGetUniformLocation(this->pixelizationShader->Program,
-                                         "screenTexture"),
-                    0);
-        glUniform1f(glGetUniformLocation(this->pixelizationShader->Program,
-                                         "pixelSize"),
-                    5.0f);
-        glUniform1f(glGetUniformLocation(this->pixelizationShader->Program,
-                                         "screenWidth"),
+        toonShader->Use();
+        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
                     (float)w());
-        glUniform1f(glGetUniformLocation(this->pixelizationShader->Program,
-                                         "screenHeight"),
+        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
                     (float)h());
+        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
+                    0);
 
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, pixelizationTexture);
+        mainFrameBuffer->bindTexture(0);  // Read from Main
+        mainFrameBuffer->drawQuad();
 
-        drawScreenQuad();
+        // Step B: Apply Pixel Shader (Temp -> Screen)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Back to screen
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
 
-        glBindTexture(GL_TEXTURE_2D, 0);
+        pixelShader->Use();
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
+                    10.0f);
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
+                    0);
+
+        tempFrameBuffer->bindTexture(0);  // Read from Temp (which has the Toon result)
+        tempFrameBuffer->drawQuad();
+    } else if (tw->pixelizeButton->value()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        pixelShader->Use();
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
+                    10.0f);
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
+                    0);
+
+        mainFrameBuffer->bindTexture(0);
+        mainFrameBuffer->drawQuad();
+    } else if (tw->toonButton->value()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        toonShader->Use();
+        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
+                    0);
+
+        mainFrameBuffer->bindTexture(0);
+        mainFrameBuffer->drawQuad();
     }
+
+    // Unbind
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 //************************************************************************

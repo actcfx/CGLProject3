@@ -175,9 +175,12 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 110;
 
-        // ---------- Pixelization ----------
+        // ---------- Pixelization and Toon Shading ----------
         pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
         togglify(pixelizeButton, 0);
+
+        toonButton = new Fl_Button(675, pty, 60, 20, "Toon");
+        togglify(toonButton, 0);
 
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);

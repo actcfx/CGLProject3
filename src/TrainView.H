@@ -57,6 +57,8 @@ class ControlPoint;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
+#include "FrameBuffer.hpp"
+
 class TrainView : public Fl_Gl_Window {
 public:
     // note that we keep the "standard widget" constructor arguments
@@ -161,17 +163,12 @@ private:
     glm::vec2 heightMapScroll = glm::vec2(0.05f, 0.02f);
     float heightMapScale = 0.2f;
 
-    // --------- Frame buffer object for pixelization ----------
-    void initPixelizationFBO();
-    void freePixelizationFBO();
-    void drawScreenQuad();
+    // --------- Frame buffer objects ----------
+    FrameBuffer* mainFrameBuffer = nullptr;
+    FrameBuffer* tempFrameBuffer = nullptr;
 
-    GLuint pixelizationFBO = 0;
-    GLuint pixelizationTexture = 0;
-    GLuint pixelizationRBO = 0;
+    Shader* pixelShader = nullptr;
+    Shader* toonShader = nullptr;
 
-    GLuint quadVAO = 0;
-    GLuint quadVBO = 0;
-
-    Shader* pixelizationShader = nullptr;
+    void initFrameBufferShader();
 };
