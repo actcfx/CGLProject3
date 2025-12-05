@@ -1080,7 +1080,6 @@ void TrainView::draw() {
     mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
     tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
 
-
     // ---------- Initialize Skybox ----------
     if (!this->skyboxShader) {
         this->skyboxShader =
@@ -1319,7 +1318,8 @@ void TrainView::draw() {
         glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
                     0);
 
-        tempFrameBuffer->bindTexture(0);  // Read from Temp (which has the Toon result)
+        tempFrameBuffer->bindTexture(
+            0);  // Read from Temp (which has the Toon result)
         tempFrameBuffer->drawQuad();
     } else if (tw->pixelizeButton->value()) {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);

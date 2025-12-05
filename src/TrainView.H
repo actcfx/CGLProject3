@@ -89,10 +89,10 @@ public:
 
 public:
     ArcBallCam arcball;  // keep an ArcBall for the UI
-    int selectedCube;    // simple - just remember which cube is selected
+    int selectedCube{};    // simple - just remember which cube is selected
 
-    TrainWindow* tw;   // The parent of this display window
-    CTrack* m_pTrack;  // The track of the entire scene
+    TrainWindow* tw{};   // The parent of this display window
+    CTrack* m_pTrack{};  // The track of the entire scene
 
 private:
     // ---------- Lighting ----------

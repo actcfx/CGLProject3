@@ -14,7 +14,7 @@ public:
     unsigned int quadVAO = 0;
     unsigned int quadVBO = 0;
 
-    FrameBuffer(int w, int h) {
+    FrameBuffer(const int w, const int h) {
         initQuad();
         resize(w, h);
     }
@@ -33,7 +33,7 @@ public:
     }
 
     // Call this when window size changes
-    void resize(int w, int h) {
+    void resize(const int w, const int h) {
         if (width == w && height == h && ID != 0)
             return;  // No change needed
 
@@ -83,22 +83,22 @@ public:
     }
 
     // Start writing to this FBO
-    void bind() {
+    void bind() const {
         glBindFramebuffer(GL_FRAMEBUFFER, ID);
         glViewport(0, 0, width, height);
     }
 
     // Stop writing (return to default screen)
-    void unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
+    static void unbind() { glBindFramebuffer(GL_FRAMEBUFFER, 0); }
 
     // Bind the result texture for reading in Shader
-    void bindTexture(int slot = 0) {
+    void bindTexture(int slot = 0) const {
         glActiveTexture(GL_TEXTURE0 + slot);
         glBindTexture(GL_TEXTURE_2D, texture);
     }
 
     // Draw the full screen quad
-    void drawQuad() {
+    void drawQuad() const {
         glBindVertexArray(quadVAO);
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
@@ -109,7 +109,7 @@ private:
         if (quadVAO != 0)
             return;
 
-        float quadVertices[] = {
+        constexpr float quadVertices[] = {
             // positions   // texCoords
             -1.0f, 1.0f, 0.0f, 1.0f, -1.0f, -1.0f, 0.0f, 0.0f,
             1.0f,  1.0f, 1.0f, 1.0f, 1.0f,  -1.0f, 1.0f, 0.0f,
@@ -124,7 +124,7 @@ private:
 
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
-                              (void*)0);
+                              nullptr);
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 4 * sizeof(float),
                               (void*)(2 * sizeof(float)));
