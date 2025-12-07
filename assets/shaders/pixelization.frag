@@ -5,38 +5,20 @@ in vec2 TexCoords;
 
 uniform sampler2D screenTexture;
 
-const float offset = 1.0 / 100.0;
+uniform float pixelSize;
+
+uniform float screenWidth;
+uniform float screenHeight;
 
 void main()
 {
-    vec2 offsets[9] = vec2[](
-        vec2(-offset,  offset),
-        vec2( 0.0f,    offset),
-        vec2( offset,  offset),
-        vec2(-offset,  0.0f),
-        vec2( 0.0f,    0.0f),
-        vec2( offset,  0.0f),
-        vec2(-offset, -offset),
-        vec2( 0.0f,   -offset),
-        vec2( offset, -offset)
-    );
+    vec2 resolution = vec2(screenWidth, screenHeight);
 
-    float kernel[9] = float[](
-        1.0 / 16.0, 2.0 / 16.0, 1.0 / 16.0,
-        2.0 / 16.0, 4.0 / 16.0, 2.0 / 16.0,
-        1.0 / 16.0, 2.0 / 16.0, 1.0 / 16.0
-    );
+    vec2 grid = resolution / pixelSize;
 
-    vec3 sampleTex[9];
+    vec2 uv = floor(TexCoords * grid) / grid;
 
-    for(int i = 0; i < 9; i++)
-    {
-        sampleTex[i] = vec3(texture(screenTexture, TexCoords.st + offsets[i]));
-    }
+    uv += (1.0 / grid) * 0.5;
 
-    vec3 col = vec3(0.0);
-    for(int i = 0; i < 9; i++)
-        col += sampleTex[i] * kernel[i];
-
-    FragColor = vec4(col, 1.0);
+    FragColor = texture(screenTexture, uv);
 }

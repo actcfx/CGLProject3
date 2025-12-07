@@ -1,4 +1,5 @@
-#pragma once
+#ifndef FRAMEBUFFER_HPP
+#define FRAMEBUFFER_HPP
 #include <glad/glad.h>
 #include <iostream>
 
@@ -132,3 +133,5 @@ private:
         glBindVertexArray(0);
     }
 };
+
+#endif  // FRAMEBUFFER_HPP

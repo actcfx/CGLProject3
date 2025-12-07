@@ -30,7 +30,11 @@ add_executable(RollerCoasters
     ${SRC_DIR}RenderUtilities/Shader.h
     ${SRC_DIR}RenderUtilities/Texture.h
     ${INCLUDE_DIR}glad4.6/src/glad.c
-    ${SRC_DIR}Shaders/Framebuffer.hpp)
+    ${SRC_DIR}Shaders/Framebuffer.hpp
+    ${SRC_DIR}Shaders/Church.hpp
+    ${SRC_DIR}Shaders/Skybox.hpp
+    ${SRC_DIR}Shaders/Water.hpp
+    ${SRC_DIR}Shaders/Water.cpp)
 
 add_library(Utilities
     ${SRC_DIR}Utilities/3DUtils.h

@@ -34,7 +34,6 @@ references)
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "ControlPoint.H"
-#include "FrameBuffer.hpp"
 #include "GL/glu.h"
 #include "TrainView.H"
 #include "TrainWindow.H"
@@ -62,6 +61,10 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mode(FL_RGB | FL_ALPHA | FL_DOUBLE | FL_STENCIL);
 
     resetArcball();
+
+    church = new Church();
+    water = new Water();
+    skybox = new Skybox();
 }
 
 //************************************************************************
@@ -269,13 +272,9 @@ void TrainView::setUBO() {
 
     glm::mat4 viewMatrix;
     glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
-    // HMatrix view matrix;
-    // this-›arcball -getMatrix(view_matrix);
 
     glm::mat4 projectionMatrix;
     glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
-    // projection_matrix = glm::perspective(glm::radians(this-›arcball.getFov()),
-    // (GLfloat)wdt / (GLfloat)hgt, 0.01f, 1000.f);
 
     glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4),
@@ -283,612 +282,6 @@ void TrainView::setUBO() {
     glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4),
                     &viewMatrix[0][0]);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
-
-void TrainView::initSimpleChurch() {
-    if (!this->shader) {
-        this->shader =
-            new Shader("./shaders/simpleChurch.vert", nullptr, nullptr, nullptr,
-                       "./shaders/simpleChurch.frag");
-    }
-
-    if (!this->commonMatrices) {
-        this->commonMatrices = new UBO();
-        this->commonMatrices->size = 2 * sizeof(glm::mat4);
-        glGenBuffers(1, &this->commonMatrices->ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
-        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
-                     GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
-    if (!this->plane) {
-        GLfloat vertices[] = { -0.5f, 0.0f, -0.5f, -0.5f, 0.0f, 0.5f,
-                               0.5f,  0.0f, 0.5f,  0.5f,  0.0f, -0.5f };
-        GLfloat normal[] = { 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f,
-                             0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f };
-        GLfloat textureCoordinate[] = { 0.0f, 0.0f, 1.0f, 0.0f,
-                                        1.0f, 1.0f, 0.0f, 1.0f };
-        GLuint element[] = { 0, 1, 2, 0, 2, 3 };
-
-        this->plane = new VAO;
-        this->plane->element_amount = sizeof(element) / sizeof(GLuint);
-        glGenVertexArrays(1, &this->plane->vao);
-        glGenBuffers(3, this->plane->vbo);
-        glGenBuffers(1, &this->plane->ebo);
-        glBindVertexArray(this->plane->vao);
-
-        // Position attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
-                     GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        // Normal attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(normal), normal, GL_STATIC_DRAW);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(1);
-
-        // Texture Coordinate attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(textureCoordinate),
-                     textureCoordinate, GL_STATIC_DRAW);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(2);
-        //Element attribute
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(element), element,
-                     GL_STATIC_DRAW);
-
-        // Unbind VAO
-        glBindVertexArray(0);
-    }
-
-    if (!this->texture) {
-        this->texture = new Texture2D("./images/church.png");
-    }
-}
-
-void TrainView::initColorfulChurch() {
-    if (!this->shader) {
-        this->shader =
-            new Shader("./shaders/colorfulChurch.vert", nullptr, nullptr,
-                       nullptr, "./shaders/colorfulChurch.frag");
-    }
-
-    if (!this->commonMatrices) {
-        this->commonMatrices = new UBO();
-        this->commonMatrices->size = 2 * sizeof(glm::mat4);
-        glGenBuffers(1, &this->commonMatrices->ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
-        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
-                     GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
-    if (!this->plane) {
-        GLfloat vertices[] = { -0.5f, 0.0f, -sqrt(3.0f) / 6.0f,
-                               0.5f,  0.0f, -sqrt(3.0f) / 6.0f,
-                               0.0f,  0.0f, sqrt(3.0f) / 3.0f };
-
-        GLfloat normal[] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.0f,
-                             1.0f, 0.0f, 0.0f, 1.0f };
-
-        GLfloat texture_coordinate[] = { 0.0f, 0.0f, 1.0f, 0.0f, 0.5f, 1.0f };
-
-        GLuint element[] = { 0, 1, 2 };
-
-        GLfloat colors[] = {
-            1.0f, 0.0f, 0.0f,  // Red
-            0.0f, 1.0f, 0.0f,  // Green
-            0.0f, 0.0f, 1.0f   // Blue
-        };
-
-        this->plane = new VAO();
-        this->plane->element_amount = sizeof(element) / sizeof(GLuint);
-        glGenVertexArrays(1, &this->plane->vao);
-        glGenBuffers(4, this->plane->vbo);
-        glGenBuffers(1, &this->plane->ebo);
-
-        glBindVertexArray(this->plane->vao);
-
-        // Position attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices,
-                     GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        // Normal attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(normal), normal, GL_STATIC_DRAW);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(1);
-
-        // Texture Coordinate attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(texture_coordinate),
-                     texture_coordinate, GL_STATIC_DRAW);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(2);
-
-        // Element attribute
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(element), element,
-                     GL_STATIC_DRAW);
-
-        // Color attribute
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(colors), colors, GL_STATIC_DRAW);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(3);
-
-        // Unbind VAO
-        glBindVertexArray(0);
-    }
-
-    if (!this->texture) {
-        this->texture = new Texture2D("./images/church.png");
-    }
-}
-
-void TrainView::initHeightMapWave() {}
-
-void TrainView::initSineWave() {
-    if (!this->shader) {
-        this->shader = new Shader("./shaders/sineWave.vert", nullptr, nullptr,
-                                  nullptr, "./shaders/sineWave.frag");
-    }
-
-    if (!this->commonMatrices) {
-        this->commonMatrices = new UBO();
-        this->commonMatrices->size = 2 * sizeof(glm::mat4);
-        glGenBuffers(1, &this->commonMatrices->ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
-        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
-                     GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
-    if (!this->plane) {
-        const int N = 100;
-        const float SIZE = 10.0f;
-
-        // Store wave parameters for GPU use
-        waveDirections = { glm::vec2(1.0f, 0.0f), glm::vec2(0.7f, 0.7f),
-                           glm::vec2(-0.6f, 0.8f) };
-        waveWavelengths = { 2.0f, 3.0f, 1.5f };
-        waveAmplitudes = { 0.10f, 0.05f, 0.07f };
-        waveSpeeds = { 1.0f, 0.8f, 1.2f };
-
-        std::vector<GLfloat> vertices;
-        std::vector<GLfloat> normals;
-        std::vector<GLfloat> texcoords;
-        std::vector<GLfloat> colors;
-        std::vector<GLuint> elements;
-
-        float half = SIZE / 2.0f;
-        for (int j = 0; j <= N; ++j) {
-            for (int i = 0; i <= N; ++i) {
-                float x = -half + SIZE * (float)i / N;
-                float z = -half + SIZE * (float)j / N;
-
-                vertices.push_back(x);
-                vertices.push_back(
-                    0.0f);  // base height, displaced in vertex shader
-                vertices.push_back(z);
-
-                normals.push_back(0.0f);
-                normals.push_back(1.0f);
-                normals.push_back(0.0f);
-
-                texcoords.push_back((float)i / N);
-                texcoords.push_back((float)j / N);
-
-                colors.push_back(0.0f);
-                colors.push_back(0.5f);
-                colors.push_back(0.6f);
-            }
-        }
-
-        for (int j = 0; j < N; ++j) {
-            for (int i = 0; i < N; ++i) {
-                GLuint topLeft = j * (N + 1) + i;
-                GLuint topRight = topLeft + 1;
-                GLuint bottomLeft = (j + 1) * (N + 1) + i;
-                GLuint bottomRight = bottomLeft + 1;
-
-                elements.push_back(topLeft);
-                elements.push_back(bottomLeft);
-                elements.push_back(topRight);
-
-                elements.push_back(topRight);
-                elements.push_back(bottomLeft);
-                elements.push_back(bottomRight);
-            }
-        }
-
-        this->plane = new VAO();
-        this->plane->element_amount = elements.size();
-
-        glGenVertexArrays(1, &this->plane->vao);
-        glGenBuffers(4, this->plane->vbo);
-        glGenBuffers(1, &this->plane->ebo);
-
-        glBindVertexArray(this->plane->vao);
-
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat),
-                     vertices.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-        glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(GLfloat),
-                     normals.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(1);
-
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-        glBufferData(GL_ARRAY_BUFFER, texcoords.size() * sizeof(GLfloat),
-                     texcoords.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(2);
-
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-        glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(GLfloat),
-                     colors.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(3);
-
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, elements.size() * sizeof(GLuint),
-                     elements.data(), GL_STATIC_DRAW);
-
-        glBindVertexArray(0);
-    }
-
-    if (!this->texture) {
-        this->texture = new Texture2D("./images/waterHeightMap.jpg");
-    }
-}
-
-void TrainView::initReflectionWater() {
-    if (!this->shader) {
-        this->shader = new Shader("./shaders/reflection.vert", nullptr, nullptr,
-                                  nullptr, "./shaders/reflection.frag");
-    }
-
-    if (!this->commonMatrices) {
-        this->commonMatrices = new UBO();
-        this->commonMatrices->size = 2 * sizeof(glm::mat4);
-        glGenBuffers(1, &this->commonMatrices->ubo);
-        glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
-        glBufferData(GL_UNIFORM_BUFFER, this->commonMatrices->size, NULL,
-                     GL_STATIC_DRAW);
-        glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    }
-
-    if (!this->plane) {
-        const int N = 10;             // 10x10 squares
-        const float size = 10.0f;     // total width = 10
-        const float step = size / N;  // side length of each square
-
-        std::vector<GLfloat> vertices;
-        std::vector<GLfloat> normals;
-        std::vector<GLfloat> texcoords;
-        std::vector<GLfloat> colors;
-        std::vector<GLuint> elements;
-
-        // Generate grid vertices (N+1) x (N+1)
-        for (int j = 0; j <= N; ++j) {
-            for (int i = 0; i <= N; ++i) {
-                float x = -size / 2.0f + i * step;
-                float z = -size / 2.0f + j * step;
-
-                vertices.push_back(x);
-                vertices.push_back(0.0f);
-                vertices.push_back(z);
-
-                normals.push_back(0.0f);
-                normals.push_back(1.0f);
-                normals.push_back(0.0f);
-
-                texcoords.push_back((float)i / N);
-                texcoords.push_back((float)j / N);
-
-                // color gradient (for visualization)
-                colors.push_back((float)i / N);
-                colors.push_back((float)j / N);
-                colors.push_back(1.0f - (float)i / N);
-            }
-        }
-
-        // Generate indices (2 triangles per square)
-        for (int j = 0; j < N; ++j) {
-            for (int i = 0; i < N; ++i) {
-                int row1 = j * (N + 1);
-                int row2 = (j + 1) * (N + 1);
-
-                GLuint a = row1 + i;
-                GLuint b = row1 + i + 1;
-                GLuint c = row2 + i;
-                GLuint d = row2 + i + 1;
-
-                // two right triangles forming a square
-                // triangle 1: a-b-c (lower left)
-                elements.push_back(a);
-                elements.push_back(b);
-                elements.push_back(c);
-
-                // triangle 2: b-d-c (upper right)
-                elements.push_back(b);
-                elements.push_back(d);
-                elements.push_back(c);
-            }
-        }
-
-        this->plane = new VAO();
-        this->plane->element_amount = static_cast<GLuint>(elements.size());
-
-        glGenVertexArrays(1, &this->plane->vao);
-        glGenBuffers(4, this->plane->vbo);
-        glGenBuffers(1, &this->plane->ebo);
-        glBindVertexArray(this->plane->vao);
-
-        // Position
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[0]);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(GLfloat),
-                     vertices.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(0);
-
-        // Normal
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[1]);
-        glBufferData(GL_ARRAY_BUFFER, normals.size() * sizeof(GLfloat),
-                     normals.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(1);
-
-        // Texcoord
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[2]);
-        glBufferData(GL_ARRAY_BUFFER, texcoords.size() * sizeof(GLfloat),
-                     texcoords.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(2);
-
-        // Color
-        glBindBuffer(GL_ARRAY_BUFFER, this->plane->vbo[3]);
-        glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(GLfloat),
-                     colors.data(), GL_STATIC_DRAW);
-        glVertexAttribPointer(3, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(GLfloat),
-                              (GLvoid*)0);
-        glEnableVertexAttribArray(3);
-
-        // Element buffer
-        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, this->plane->ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, elements.size() * sizeof(GLuint),
-                     elements.data(), GL_STATIC_DRAW);
-
-        glBindVertexArray(0);
-    }
-}
-
-// Initialize reflection and refraction FBOs for water
-void TrainView::initWaterFBOs() {
-    // Reflection FBO
-    if (reflectionFBO == 0) {
-        glGenFramebuffers(1, &reflectionFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
-
-        glGenTextures(1, &reflectionTexture);
-        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                     GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, reflectionTexture, 0);
-
-        glGenRenderbuffers(1, &reflectionDepthRBO);
-        glBindRenderbuffer(GL_RENDERBUFFER, reflectionDepthRBO);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
-                              waterFBOWidth, waterFBOHeight);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                                  GL_RENDERBUFFER, reflectionDepthRBO);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-
-    // Refraction FBO
-    if (refractionFBO == 0) {
-        glGenFramebuffers(1, &refractionFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
-
-        glGenTextures(1, &refractionTexture);
-        glBindTexture(GL_TEXTURE_2D, refractionTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                     GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, refractionTexture, 0);
-
-        glGenTextures(1, &refractionDepthTexture);
-        glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, waterFBOWidth,
-                     waterFBOHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                               GL_TEXTURE_2D, refractionDepthTexture, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    }
-}
-
-// Render scene with reflection (mirrored above water)
-void TrainView::renderReflection() {
-    if (tw->shaderBrowser->value() != 5)
-        return;  // Only for reflection water
-
-    initWaterFBOs();
-
-    // Save previous FBO and viewport so we can restore them later.
-    GLint prevFBO = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
-    GLint prevViewport[4];
-    glGetIntegerv(GL_VIEWPORT, prevViewport);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
-    glViewport(0, 0, waterFBOWidth, waterFBOHeight);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // Mirror transformation
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glTranslatef(0.0f, waterHeight, 0.0f);
-    glScalef(1.0f, -1.0f, 1.0f);
-    glTranslatef(0.0f, -waterHeight, 0.0f);
-
-    // Render scene (excluding water)
-    glEnable(GL_CLIP_PLANE0);
-    double clipPlane[4] = { 0.0, 1.0, 0.0, -waterHeight };
-    glClipPlane(GL_CLIP_PLANE0, clipPlane);
-
-    setLighting();
-
-    // Draw skybox
-    glDepthMask(GL_FALSE);
-    glDepthFunc(GL_LEQUAL);
-    skyboxShader->Use();
-    glm::mat4 view_matrix;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
-    glm::mat4 viewNoTrans = glm::mat4(glm::mat3(view_matrix));
-    glm::mat4 projection_matrix;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
-    glUniformMatrix4fv(glGetUniformLocation(skyboxShader->Program, "view"), 1,
-                       GL_FALSE, &viewNoTrans[0][0]);
-    glUniformMatrix4fv(
-        glGetUniformLocation(skyboxShader->Program, "projection"), 1, GL_FALSE,
-        &projection_matrix[0][0]);
-    glUniform1i(glGetUniformLocation(skyboxShader->Program, "skybox"), 0);
-    glBindVertexArray(skyboxVAO);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
-    glBindVertexArray(0);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LESS);
-    glUseProgram(0);
-
-    // Draw scene objects
-    setupFloor();
-    drawFloor(200, 10);
-    glEnable(GL_LIGHTING);
-    setupObjects();
-    drawStuff();
-
-    glDisable(GL_CLIP_PLANE0);
-    glPopMatrix();
-    // Restore previous framebuffer and viewport
-    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
-    glViewport(prevViewport[0], prevViewport[1], prevViewport[2],
-               prevViewport[3]);
-}
-
-// Render scene with refraction (view through water)
-void TrainView::renderRefraction() {
-    if (tw->shaderBrowser->value() != 5)
-        return;  // Only for reflection water
-
-    initWaterFBOs();
-
-    // Save previous FBO and viewport so we can restore them later.
-    GLint prevFBO = 0;
-    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
-    GLint prevViewport[4];
-    glGetIntegerv(GL_VIEWPORT, prevViewport);
-
-    glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
-    glViewport(0, 0, waterFBOWidth, waterFBOHeight);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-    // Clip everything above water
-    glEnable(GL_CLIP_PLANE0);
-    double clipPlane[4] = { 0.0, -1.0, 0.0, waterHeight };
-    glClipPlane(GL_CLIP_PLANE0, clipPlane);
-
-    setLighting();
-
-    // Draw floor (below water)
-    glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
-
-    // Draw objects below water
-    glEnable(GL_LIGHTING);
-    setupObjects();
-    drawStuff();
-
-    glDisable(GL_CLIP_PLANE0);
-    // Restore previous framebuffer and viewport
-    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
-    glViewport(prevViewport[0], prevViewport[1], prevViewport[2],
-               prevViewport[3]);
-}
-
-unsigned int TrainView::loadCubeMap(vector<std::string> faces) {
-    unsigned int textureID = 0;
-    glGenTextures(1, &textureID);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
-
-    for (unsigned int i = 0; i < faces.size(); ++i) {
-        cv::Mat data = cv::imread(faces[i], cv::IMREAD_UNCHANGED);
-        if (data.empty()) {
-            std::cout << "Cubemap tex failed to load at path: " << faces[i]
-                      << std::endl;
-            continue;
-        }
-        GLenum srcFormat = GL_RGB;
-        GLenum internalFormat = GL_RGB8;
-        if (data.channels() == 3) {
-            srcFormat = GL_BGR;  // OpenCV loads BGR
-            internalFormat = GL_RGB8;
-        } else if (data.channels() == 4) {
-            srcFormat = GL_BGRA;
-            internalFormat = GL_RGBA8;
-        }
-        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, internalFormat,
-                     data.cols, data.rows, 0, srcFormat, GL_UNSIGNED_BYTE,
-                     data.data);
-        data.release();
-    }
-
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
-
-    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
-    return textureID;
 }
 
 void TrainView::initFrameBufferShader() {
@@ -910,32 +303,16 @@ void TrainView::initFrameBufferShader() {
 }
 
 void TrainView::clearGlad() {
-    if (this->shader) {
-        delete this->shader;
-        this->shader = nullptr;
-    }
-
-    if (this->commonMatrices) {
-        glDeleteBuffers(1, &this->commonMatrices->ubo);
-        delete this->commonMatrices;
-        this->commonMatrices = nullptr;
-    }
-
-    if (this->plane) {
-        glDeleteVertexArrays(1, &this->plane->vao);
-        glDeleteBuffers(4, this->plane->vbo);
-        glDeleteBuffers(1, &this->plane->ebo);
-        delete this->plane;
-        this->plane = nullptr;
-    }
-
-    if (this->texture) {
-        delete this->texture;
-        this->texture = nullptr;
-    }
+    this->shader = nullptr;
+    this->commonMatrices = nullptr;
+    this->plane = nullptr;
+    this->texture = nullptr;
 }
 
 void TrainView::drawPlane() {
+    if (!this->shader || !this->plane)
+        return;
+
     setUBO();
     glBindBufferRange(GL_UNIFORM_BUFFER, /*binding point*/ 0,
                       this->commonMatrices->ubo, 0, this->commonMatrices->size);
@@ -943,7 +320,7 @@ void TrainView::drawPlane() {
     //bind shader
     this->shader->Use();
 
-    glm::mat4 modelMatrix = glm::mat4();
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
     modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
     modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
     glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
@@ -967,43 +344,55 @@ void TrainView::drawPlane() {
     glUniform1f(glGetUniformLocation(this->shader->Program, "u_time"), t);
 
     // Wave uniforms
-    int waveCount = (int)waveDirections.size();
-    glUniform1i(glGetUniformLocation(this->shader->Program, "u_waveCount"),
-                waveCount);
-    if (waveCount > 0) {
-        glUniform2fv(glGetUniformLocation(this->shader->Program, "u_direction"),
-                     waveCount, &waveDirections[0][0]);
-        glUniform1fv(
-            glGetUniformLocation(this->shader->Program, "u_wavelength"),
-            waveCount, &waveWavelengths[0]);
-        glUniform1fv(glGetUniformLocation(this->shader->Program, "u_amplitude"),
-                     waveCount, &waveAmplitudes[0]);
-        glUniform1fv(glGetUniformLocation(this->shader->Program, "u_speed"),
-                     waveCount, &waveSpeeds[0]);
-    }
-    glUniform2fv(glGetUniformLocation(this->shader->Program, "u_scroll"), 1,
-                 &heightMapScroll[0]);
-    glUniform1f(glGetUniformLocation(this->shader->Program, "u_heightScale"),
-                heightMapScale);
+    if (tw->shaderBrowser->value() == 3 || tw->shaderBrowser->value() == 4 ||
+        tw->shaderBrowser->value() == 5) {
+        int waveCount = (int)water->waveDirections.size();
+        glUniform1i(glGetUniformLocation(this->shader->Program, "u_waveCount"),
+                    waveCount);
+        if (waveCount > 0) {
+            glUniform2fv(
+                glGetUniformLocation(this->shader->Program, "u_direction"),
+                waveCount, &water->waveDirections[0][0]);
+            glUniform1fv(
+                glGetUniformLocation(this->shader->Program, "u_wavelength"),
+                waveCount, &water->waveWavelengths[0]);
+            glUniform1fv(
+                glGetUniformLocation(this->shader->Program, "u_amplitude"),
+                waveCount, &water->waveAmplitudes[0]);
+            glUniform1fv(glGetUniformLocation(this->shader->Program, "u_speed"),
+                         waveCount, &water->waveSpeeds[0]);
+        }
+        glUniform2fv(glGetUniformLocation(this->shader->Program, "u_scroll"), 1,
+                     &water->heightMapScroll[0]);
+        glUniform1f(
+            glGetUniformLocation(this->shader->Program, "u_heightScale"),
+            water->heightMapScale);
 
-    // Reflection & Refraction textures for water shader
-    if (reflectionTexture != 0) {
-        glActiveTexture(GL_TEXTURE1);
-        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
-        glUniform1i(
-            glGetUniformLocation(this->shader->Program, "u_reflectionTex"), 1);
-    }
-    if (refractionTexture != 0) {
-        glActiveTexture(GL_TEXTURE2);
-        glBindTexture(GL_TEXTURE_2D, refractionTexture);
-        glUniform1i(
-            glGetUniformLocation(this->shader->Program, "u_refractionTex"), 2);
-    }
-    if (refractionDepthTexture != 0) {
-        glActiveTexture(GL_TEXTURE3);
-        glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
-        glUniform1i(glGetUniformLocation(this->shader->Program, "u_depthTex"),
-                    3);
+        // Reflection & Refraction textures for water shader
+        if (water->reflectionTexture != 0) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, water->reflectionTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_reflectionTex"),
+                1);
+        }
+        if (water->refractionTexture != 0) {
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, water->refractionTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_refractionTex"),
+                2);
+        }
+        if (water->refractionDepthTexture != 0) {
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, water->refractionDepthTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_depthTex"), 3);
+        }
+
+        glUniform1f(
+            glGetUniformLocation(this->shader->Program, "u_waterHeight"),
+            water->waterHeight);
     }
 
     // Camera position and skybox for shader
@@ -1013,13 +402,11 @@ void TrainView::drawPlane() {
     glm::vec3 cameraPos = glm::vec3(invView[3]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_cameraPos"), 1,
                  &cameraPos[0]);
-    glUniform1f(glGetUniformLocation(this->shader->Program, "u_waterHeight"),
-                waterHeight);
 
     // Bind skybox for reflection
-    if (skyboxTexture != 0) {
+    if (skybox && skybox->getTexture() != 0) {
         glActiveTexture(GL_TEXTURE5);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->getTexture());
         GLint skyboxLoc =
             glGetUniformLocation(this->shader->Program, "u_skybox");
         if (skyboxLoc >= 0) {
@@ -1052,25 +439,57 @@ void TrainView::draw() {
         if (!gladLoadGL()) {
             throw std::runtime_error("Could not initialize GLAD!");
         }
+        // Initialize Skybox once
+        skybox->init();
         glInited = true;
     }
 
+    clearGlad();
+
     // Reinitialize content shaders depending on selection
-    if (tw->shaderBrowser->value() == 1) {
-        clearGlad();
-        initSimpleChurch();
-    } else if (tw->shaderBrowser->value() == 2) {
-        clearGlad();
-        initColorfulChurch();
-    } else if (tw->shaderBrowser->value() == 3) {
-        // clearGlad();
-        // initHeightMapWave();
-    } else if (tw->shaderBrowser->value() == 4) {
-        clearGlad();
-        initSineWave();
-    } else if (tw->shaderBrowser->value() == 5) {
-        clearGlad();
-        initReflectionWater();
+    static int lastShader = -1;
+    int shaderType = tw->shaderBrowser->value();
+
+    if (shaderType != lastShader) {
+        if (shaderType == 1) {
+            church->initSimple();
+        } else if (shaderType == 2) {
+            church->initColorful();
+        } else if (shaderType == 3) {
+            water->initHeightMapWave();
+        } else if (shaderType == 4) {
+            water->initSineWave();
+        } else if (shaderType == 5) {
+            water->initReflectionWater();
+        }
+        lastShader = shaderType;
+    }
+
+    if (shaderType == 1) {
+        this->shader = church->shader;
+        this->plane = church->plane;
+        this->texture = church->texture;
+        this->commonMatrices = church->commonMatrices;
+    } else if (shaderType == 2) {
+        this->shader = church->shader;
+        this->plane = church->plane;
+        this->texture = church->texture;
+        this->commonMatrices = church->commonMatrices;
+    } else if (shaderType == 3) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 4) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 5) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
     } else {
         clearGlad();
     }
@@ -1080,104 +499,11 @@ void TrainView::draw() {
     mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
     tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
 
-    // ---------- Initialize Skybox ----------
-    if (!this->skyboxShader) {
-        this->skyboxShader =
-            new Shader("./shaders/skyBox.vert", nullptr, nullptr, nullptr,
-                       "./shaders/skyBox.frag");
-    }
-    if (skyboxTexture == 0) {
-        std::vector<std::string> texturesFaces = {
-            "./images/skybox/right.jpg", "./images/skybox/left.jpg",
-            "./images/skybox/top.jpg",   "./images/skybox/bottom.jpg",
-            "./images/skybox/front.jpg", "./images/skybox/back.jpg"
-        };
-        skyboxTexture = loadCubeMap(texturesFaces);
-    }
-
-    float cubeVertices[] = {
-        // positions          // texture Coords
-        -0.5f, -0.5f, -0.5f, 0.0f, 0.0f, 0.5f,  -0.5f, -0.5f, 1.0f, 0.0f,
-        0.5f,  0.5f,  -0.5f, 1.0f, 1.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
-        -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
-
-        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, 0.5f,  -0.5f, 0.5f,  1.0f, 0.0f,
-        0.5f,  0.5f,  0.5f,  1.0f, 1.0f, 0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-        -0.5f, 0.5f,  0.5f,  0.0f, 1.0f, -0.5f, -0.5f, 0.5f,  0.0f, 0.0f,
-
-        -0.5f, 0.5f,  0.5f,  1.0f, 0.0f, -0.5f, 0.5f,  -0.5f, 1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -0.5f, 0.5f,  0.5f,  1.0f, 0.0f,
-
-        0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
-        0.5f,  -0.5f, -0.5f, 0.0f, 1.0f, 0.5f,  -0.5f, -0.5f, 0.0f, 1.0f,
-        0.5f,  -0.5f, 0.5f,  0.0f, 0.0f, 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-
-        -0.5f, -0.5f, -0.5f, 0.0f, 1.0f, 0.5f,  -0.5f, -0.5f, 1.0f, 1.0f,
-        0.5f,  -0.5f, 0.5f,  1.0f, 0.0f, 0.5f,  -0.5f, 0.5f,  1.0f, 0.0f,
-        -0.5f, -0.5f, 0.5f,  0.0f, 0.0f, -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-
-        -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f, 0.5f,  0.5f,  -0.5f, 1.0f, 1.0f,
-        0.5f,  0.5f,  0.5f,  1.0f, 0.0f, 0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f, 0.5f,  0.5f,  0.0f, 0.0f, -0.5f, 0.5f,  -0.5f, 0.0f, 1.0f
-    };
-    float skyboxVertices[] = {
-        // positions
-        -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f,
-        1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f,
-
-        -1.0f, -1.0f, 1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  -1.0f,
-        -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f, 1.0f,
-
-        1.0f,  -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f,
-
-        -1.0f, -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f, -1.0f, 1.0f,
-
-        -1.0f, 1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  1.0f,
-        1.0f,  1.0f,  1.0f,  -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f,  -1.0f,
-
-        -1.0f, -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, -1.0f,
-        1.0f,  -1.0f, -1.0f, -1.0f, -1.0f, 1.0f,  1.0f,  -1.0f, 1.0f
-    };
-
-    // cube VAO
-    unsigned int cubeVAO, cubeVBO;
-    glGenVertexArrays(1, &cubeVAO);
-    glGenBuffers(1, &cubeVBO);
-    glBindVertexArray(cubeVAO);
-    glBindBuffer(GL_ARRAY_BUFFER, cubeVBO);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cubeVertices), &cubeVertices,
-                 GL_STATIC_DRAW);
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void*)0);
-    glEnableVertexAttribArray(1);
-    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float),
-                          (void*)(3 * sizeof(float)));
-    // skybox VAO (cache)
-    if (skyboxVAO == 0) {
-        glGenVertexArrays(1, &skyboxVAO);
-        glGenBuffers(1, &skyboxVBO);
-        glBindVertexArray(skyboxVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(skyboxVertices), &skyboxVertices,
-                     GL_STATIC_DRAW);
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float),
-                              (void*)0);
-        glBindVertexArray(0);
-    }
-
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, w(), h());
-
-    // // Set up the view port
-    // glViewport(0, 0, w(), h());
 
     // clear the window, be sure to clear the Z-Buffer too (single clear)
     glClearColor(0, 0, .3f, 0);
@@ -1207,34 +533,12 @@ void TrainView::draw() {
     setLighting();
 
     // ---------- Draw the skybox ----------
-    glDepthMask(GL_FALSE);   // don't write depth
-    glDepthFunc(GL_LEQUAL);  // allow skybox depth at far plane
-    this->skyboxShader->Use();
     glm::mat4 view_matrix;
     glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
-    glm::mat4 viewNoTrans =
-        glm::mat4(glm::mat3(view_matrix));  // remove translation
     glm::mat4 projection_matrix;
     glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
-    GLint viewLoc = glGetUniformLocation(this->skyboxShader->Program, "view");
-    GLint projLoc =
-        glGetUniformLocation(this->skyboxShader->Program, "projection");
-    if (viewLoc >= 0)
-        glUniformMatrix4fv(viewLoc, 1, GL_FALSE, &viewNoTrans[0][0]);
-    if (projLoc >= 0)
-        glUniformMatrix4fv(projLoc, 1, GL_FALSE, &projection_matrix[0][0]);
-    GLint samplerLoc =
-        glGetUniformLocation(this->skyboxShader->Program, "skybox");
-    if (samplerLoc >= 0)
-        glUniform1i(samplerLoc, 0);
-    glBindVertexArray(skyboxVAO);
-    glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_CUBE_MAP, skyboxTexture);
-    glDrawArrays(GL_TRIANGLES, 0, 36);
-    glBindVertexArray(0);
-    glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LESS);
-    glUseProgram(0);
+
+    skybox->draw(view_matrix, projection_matrix);
 
     // ---------- Draw the floor ----------
     glUseProgram(0);
@@ -1266,13 +570,13 @@ void TrainView::draw() {
     }
 
     // ---------- Render reflection & refraction for water ----------
-    if (tw->shaderBrowser->value() == 5) {
+    if (shaderType == 5) {
         // Store original viewport
         GLint viewport[4];
         glGetIntegerv(GL_VIEWPORT, viewport);
 
-        renderReflection();
-        renderRefraction();
+        water->renderReflection(this);
+        water->renderRefraction(this);
 
         // Restore viewport and matrices
         glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
@@ -1310,7 +614,7 @@ void TrainView::draw() {
 
         pixelShader->Use();
         glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    10.0f);
+                    5.0f);
         glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
                     (float)w());
         glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
@@ -1328,7 +632,7 @@ void TrainView::draw() {
 
         pixelShader->Use();
         glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    10.0f);
+                    5.0f);
         glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
                     (float)w());
         glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),

@@ -31,7 +31,6 @@ class TrainWindow;
 class CTrack;
 class ControlPoint;
 
-#include <vector>
 #include "Utilities/Pnt3f.H"
 
 //#######################################################################
@@ -57,9 +56,14 @@ class ControlPoint;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
-#include "FrameBuffer.hpp"
+#include "Shaders/FrameBuffer.hpp"
+#include "Shaders/Church.hpp"
+#include "Shaders/Skybox.hpp"
+#include "Shaders/Water.hpp"
 
 class TrainView : public Fl_Gl_Window {
+    friend class Water;
+
 public:
     // note that we keep the "standard widget" constructor arguments
     TrainView(int x, int y, int w, int h, const char* l = 0);
@@ -89,10 +93,15 @@ public:
 
 public:
     ArcBallCam arcball;  // keep an ArcBall for the UI
-    int selectedCube{};    // simple - just remember which cube is selected
+    int selectedCube{};  // simple - just remember which cube is selected
 
     TrainWindow* tw{};   // The parent of this display window
     CTrack* m_pTrack{};  // The track of the entire scene
+
+    // New members
+    Church* church = nullptr;
+    Water* water = nullptr;
+    Skybox* skybox = nullptr;
 
 private:
     // ---------- Lighting ----------
@@ -119,49 +128,15 @@ private:
 
     // ---------- Shaders and Textures ----------
     Shader* shader = nullptr;
-    Shader* skyboxShader = nullptr;
     Texture2D* texture = nullptr;
-    std::vector<Texture2D*> skyboxTextures = {};
     VAO* plane = nullptr;
     UBO* commonMatrices = nullptr;
-    // Performance-related cached GL objects for skybox
-    unsigned int skyboxVAO = 0;
-    unsigned int skyboxVBO = 0;
-    unsigned int skyboxTexture = 0;
+
     bool glInited = false;
 
-    // ---------- Water Reflection & Refraction ----------
-    unsigned int reflectionFBO = 0;
-    unsigned int reflectionTexture = 0;
-    unsigned int reflectionDepthRBO = 0;
-    unsigned int refractionFBO = 0;
-    unsigned int refractionTexture = 0;
-    unsigned int refractionDepthTexture = 0;
-    int waterFBOWidth = 1024;
-    int waterFBOHeight = 1024;
-    float waterHeight = 10.0f;
-
     void setUBO();
-    void initSimpleChurch();
-    void initColorfulChurch();
-    void initHeightMapWave();
-    void initSineWave();
-    void initReflectionWater();
-    unsigned int loadCubeMap(std::vector<std::string> faces);
     void clearGlad();
-    void initWaterFBOs();
-    void renderReflection();
-    void renderRefraction();
-
     void drawPlane();
-
-    // --------- Water Simulation Parameters ---------
-    std::vector<glm::vec2> waveDirections;
-    std::vector<float> waveWavelengths;
-    std::vector<float> waveAmplitudes;
-    std::vector<float> waveSpeeds;
-    glm::vec2 heightMapScroll = glm::vec2(0.05f, 0.02f);
-    float heightMapScale = 0.2f;
 
     // --------- Frame buffer objects ----------
     FrameBuffer* mainFrameBuffer = nullptr;
