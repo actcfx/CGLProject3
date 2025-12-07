@@ -1,4 +1,5 @@
 #include "Water.hpp"
+#include <GL/glu.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -7,7 +8,6 @@
 #include "../TrainView.H"
 #include "../TrainWindow.H"
 #include "../Utilities/3DUtils.H"
-#include "Skybox.hpp"
 
 Water::Water() {}
 
@@ -428,55 +428,82 @@ void Water::initWaterFBOs(int width, int height) {
     waterFBOWidth = width;
     waterFBOHeight = height;
 
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
+
     // Reflection FBO
     if (reflectionFBO == 0) {
         glGenFramebuffers(1, &reflectionFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
+    }
+    glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
 
+    if (reflectionTexture == 0) {
         glGenTextures(1, &reflectionTexture);
-        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                     GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, reflectionTexture, 0);
+    }
+    glBindTexture(GL_TEXTURE_2D, reflectionTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           reflectionTexture, 0);
 
+    if (reflectionDepthRBO == 0) {
         glGenRenderbuffers(1, &reflectionDepthRBO);
-        glBindRenderbuffer(GL_RENDERBUFFER, reflectionDepthRBO);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT,
-                              waterFBOWidth, waterFBOHeight);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                                  GL_RENDERBUFFER, reflectionDepthRBO);
+    }
+    glBindRenderbuffer(GL_RENDERBUFFER, reflectionDepthRBO);
+    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, waterFBOWidth,
+                          waterFBOHeight);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                              GL_RENDERBUFFER, reflectionDepthRBO);
 
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    GLenum reflectionStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (reflectionStatus != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Reflection FBO incomplete: " << reflectionStatus
+                  << std::endl;
     }
 
     // Refraction FBO
     if (refractionFBO == 0) {
         glGenFramebuffers(1, &refractionFBO);
-        glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
-
-        glGenTextures(1, &refractionTexture);
-        glBindTexture(GL_TEXTURE_2D, refractionTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                     GL_RGB, GL_UNSIGNED_BYTE, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0,
-                               GL_TEXTURE_2D, refractionTexture, 0);
-
-        glGenTextures(1, &refractionDepthTexture);
-        glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, waterFBOWidth,
-                     waterFBOHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                               GL_TEXTURE_2D, refractionDepthTexture, 0);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
     }
+    glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
+
+    if (refractionTexture == 0) {
+        glGenTextures(1, &refractionTexture);
+    }
+    glBindTexture(GL_TEXTURE_2D, refractionTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
+                 GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                           refractionTexture, 0);
+
+    if (refractionDepthTexture == 0) {
+        glGenTextures(1, &refractionDepthTexture);
+    }
+    glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, waterFBOWidth,
+                 waterFBOHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           refractionDepthTexture, 0);
+
+    GLenum refractionStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
+    if (refractionStatus != GL_FRAMEBUFFER_COMPLETE) {
+        std::cerr << "Refraction FBO incomplete: " << refractionStatus
+                  << std::endl;
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
 }
 
 void Water::renderReflection(TrainView* tw) {
@@ -485,31 +512,46 @@ void Water::renderReflection(TrainView* tw) {
 
     initWaterFBOs(tw->w(), tw->h());
 
-    // Save previous FBO and viewport so we can restore them later.
+    // Save previous FBO, viewport, and matrices to restore later
     GLint prevFBO = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
     GLint prevViewport[4];
     glGetIntegerv(GL_VIEWPORT, prevViewport);
 
+    // Save current camera modelview matrix
+    glm::mat4 originalModelView;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &originalModelView[0][0]);
+
     glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
     glViewport(0, 0, waterFBOWidth, waterFBOHeight);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.05f, 0.12f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Mirror transformation
+    // Use the same projection as main scene
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    // Projection is already set by setProjection(), don't change it
+
+    // Apply mirror transformation on top of existing camera view
     glMatrixMode(GL_MODELVIEW);
     glPushMatrix();
+    // Start with current camera view
+    glLoadMatrixf(&originalModelView[0][0]);
+    // Then apply mirror transformation
     glTranslatef(0.0f, waterHeight, 0.0f);
     glScalef(1.0f, -1.0f, 1.0f);
     glTranslatef(0.0f, -waterHeight, 0.0f);
 
-    // Render scene (excluding water)
+    // Clip everything below the water plane for reflection
     glEnable(GL_CLIP_PLANE0);
     double clipPlane[4] = { 0.0, 1.0, 0.0, -waterHeight };
     glClipPlane(GL_CLIP_PLANE0, clipPlane);
 
+    // Set up lighting for reflection view
     tw->setLighting();
 
-    // Draw skybox
+    // Draw skybox in reflected view
     if (tw->skybox) {
         glm::mat4 view_matrix;
         glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
@@ -518,15 +560,23 @@ void Water::renderReflection(TrainView* tw) {
         tw->skybox->draw(view_matrix, projection_matrix);
     }
 
-    // Draw scene objects
+    // Draw all scene objects in reflection view
+    glUseProgram(0);
     setupFloor();
     drawFloor(200, 10);
+
     glEnable(GL_LIGHTING);
     setupObjects();
+
+    // Draw all scene elements: track, train, oden, control points
     tw->drawStuff();
 
     glDisable(GL_CLIP_PLANE0);
+    glMatrixMode(GL_PROJECTION);
     glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+
     // Restore previous framebuffer and viewport
     glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
     glViewport(prevViewport[0], prevViewport[1], prevViewport[2],
@@ -539,21 +589,39 @@ void Water::renderRefraction(TrainView* tw) {
 
     initWaterFBOs(tw->w(), tw->h());
 
-    // Save previous FBO and viewport so we can restore them later.
+    // Save previous FBO, viewport, and matrices to restore later
     GLint prevFBO = 0;
     glGetIntegerv(GL_FRAMEBUFFER_BINDING, &prevFBO);
     GLint prevViewport[4];
     glGetIntegerv(GL_VIEWPORT, prevViewport);
 
+    // Save current camera modelview matrix
+    glm::mat4 originalModelView;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &originalModelView[0][0]);
+
     glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
     glViewport(0, 0, waterFBOWidth, waterFBOHeight);
+    glEnable(GL_DEPTH_TEST);
+    glClearColor(0.05f, 0.12f, 0.18f, 1.0f);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    // Clip everything above water
+    // Use the same projection as main scene
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    // Projection is already set, don't change it
+
+    // Regular view for refraction (use current camera view)
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadMatrixf(&originalModelView[0][0]);
+
+    // Clip everything above the water plane for refraction
+    // This shows only objects underwater
     glEnable(GL_CLIP_PLANE0);
     double clipPlane[4] = { 0.0, -1.0, 0.0, waterHeight };
     glClipPlane(GL_CLIP_PLANE0, clipPlane);
 
+    // Set up lighting for refraction view
     tw->setLighting();
 
     // Draw floor (below water)
@@ -561,12 +629,19 @@ void Water::renderRefraction(TrainView* tw) {
     setupFloor();
     drawFloor(200, 10);
 
-    // Draw objects below water
+    // Draw all scene objects that intersect with water (for underwater appearance)
     glEnable(GL_LIGHTING);
     setupObjects();
+
+    // Draw all scene elements clipped below water: track, train, oden, control points
     tw->drawStuff();
 
     glDisable(GL_CLIP_PLANE0);
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+
     // Restore previous framebuffer and viewport
     glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
     glViewport(prevViewport[0], prevViewport[1], prevViewport[2],

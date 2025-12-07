@@ -56,10 +56,11 @@ class ControlPoint;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
-#include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Church.hpp"
+#include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
+
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;

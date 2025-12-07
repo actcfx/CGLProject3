@@ -393,6 +393,18 @@ void TrainView::drawPlane() {
         glUniform1f(
             glGetUniformLocation(this->shader->Program, "u_waterHeight"),
             water->waterHeight);
+
+        if (tw->shaderBrowser->value() == 5) {
+            glUniform1f(glGetUniformLocation(this->shader->Program,
+                                             "u_distortionStrength"),
+                        0.0012f);
+            glUniform1f(
+                glGetUniformLocation(this->shader->Program, "u_normalStrength"),
+                0.015f);
+            glUniform3f(
+                glGetUniformLocation(this->shader->Program, "u_waterColor"),
+                0.02f, 0.32f, 0.52f);
+        }
     }
 
     // Camera position and skybox for shader
