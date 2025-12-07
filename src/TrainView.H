@@ -31,7 +31,6 @@ class TrainWindow;
 class CTrack;
 class ControlPoint;
 
-#include <vector>
 #include "Utilities/Pnt3f.H"
 
 //#######################################################################
@@ -57,7 +56,15 @@ class ControlPoint;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
+#include "Shaders/Church.hpp"
+#include "Shaders/FrameBuffer.hpp"
+#include "Shaders/Skybox.hpp"
+#include "Shaders/Water.hpp"
+
+
 class TrainView : public Fl_Gl_Window {
+    friend class Water;
+
 public:
     // note that we keep the "standard widget" constructor arguments
     TrainView(int x, int y, int w, int h, const char* l = 0);
@@ -72,9 +79,7 @@ public:
     void drawStuff(bool doingShadows = false);
 
     void drawTrack(bool doingShadows);
-
     void drawTrain(bool doingShadows);
-
     void drawOden(bool doingShadows);
 
     // setup the projection - assuming that the projection stack has been
@@ -89,10 +94,15 @@ public:
 
 public:
     ArcBallCam arcball;  // keep an ArcBall for the UI
-    int selectedCube;    // simple - just remember which cube is selected
+    int selectedCube{};  // simple - just remember which cube is selected
 
-    TrainWindow* tw;   // The parent of this display window
-    CTrack* m_pTrack;  // The track of the entire scene
+    TrainWindow* tw{};   // The parent of this display window
+    CTrack* m_pTrack{};  // The track of the entire scene
+
+    // New members
+    Church* church = nullptr;
+    Water* water = nullptr;
+    Skybox* skybox = nullptr;
 
 private:
     // ---------- Lighting ----------
@@ -116,4 +126,25 @@ private:
 
     float currentTension(float fallback) const;
     void buildBasisMatrix(int mode, float out[4][4]) const;
+
+    // ---------- Shaders and Textures ----------
+    Shader* shader = nullptr;
+    Texture2D* texture = nullptr;
+    VAO* plane = nullptr;
+    UBO* commonMatrices = nullptr;
+
+    bool glInited = false;
+
+    void setUBO();
+    void clearGlad();
+    void drawPlane();
+
+    // --------- Frame buffer objects ----------
+    FrameBuffer* mainFrameBuffer = nullptr;
+    FrameBuffer* tempFrameBuffer = nullptr;
+
+    Shader* pixelShader = nullptr;
+    Shader* toonShader = nullptr;
+
+    void initFrameBufferShader();
 };

@@ -94,7 +94,15 @@ public:
     Fl_Button* pointLightButton;
     Fl_Button* spotLightButton;
 
-	Fl_Value_Slider* tensionSlider;
+    Fl_Value_Slider* tensionSlider;
+
+    Fl_Browser* shaderBrowser;
+
+    Fl_Button* pixelizeButton;
+
+    Fl_Button* toonButton;
+
+    Fl_Value_Slider* reflectRefractSlider;
 
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about

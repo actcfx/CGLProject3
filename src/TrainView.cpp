@@ -23,14 +23,13 @@ references)
 *************************************************************************/
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <iostream>
 #include <vector>
 
-#include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
-// #include "GL/gl.h"
-#include <Fl/fl.h>
 #include <glad/glad.h>
+#include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -48,7 +47,7 @@ references)
 #define M_PI 3.14159265358979323846
 #endif
 
-#define DIVIDE_LINE 1000.0f
+#define DIVIDE_LINE 250.0f  // reduced for performance; was 1000
 #define GUAGE 5.0f
 
 //************************************************************************
@@ -62,6 +61,10 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mode(FL_RGB | FL_ALPHA | FL_DOUBLE | FL_STENCIL);
 
     resetArcball();
+
+    church = new Church();
+    water = new Water();
+    skybox = new Skybox();
 }
 
 //************************************************************************
@@ -263,30 +266,280 @@ void TrainView::setLighting() {
     }
 }
 
-void TrainView::draw() {
-    // initialized glad
-    if (gladLoadGL()) {
+void TrainView::setUBO() {
+    float wdt = this->pixel_w();
+    float hgt = this->pixel_h();
 
+    glm::mat4 viewMatrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
+
+    glm::mat4 projectionMatrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, this->commonMatrices->ubo);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(glm::mat4),
+                    &projectionMatrix[0][0]);
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(glm::mat4), sizeof(glm::mat4),
+                    &viewMatrix[0][0]);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void TrainView::initFrameBufferShader() {
+    if (!pixelShader)
+        pixelShader =
+            new Shader("./shaders/pixelization.vert", nullptr, nullptr, nullptr,
+                       "./shaders/pixelization.frag");
+    if (!toonShader)
+        toonShader = new Shader("./shaders/toon.vert", nullptr, nullptr,
+                                nullptr, "./shaders/toon.frag");
+
+    // Initialize Buffer if null
+    if (!mainFrameBuffer) {
+        mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
+    }
+    if (!tempFrameBuffer) {
+        tempFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
+    }
+}
+
+void TrainView::clearGlad() {
+    this->shader = nullptr;
+    this->commonMatrices = nullptr;
+    this->plane = nullptr;
+    this->texture = nullptr;
+}
+
+void TrainView::drawPlane() {
+    if (!this->shader || !this->plane)
+        return;
+
+    setUBO();
+    glBindBufferRange(GL_UNIFORM_BUFFER, /*binding point*/ 0,
+                      this->commonMatrices->ubo, 0, this->commonMatrices->size);
+
+    //bind shader
+    this->shader->Use();
+
+    glm::mat4 modelMatrix = glm::mat4(1.0f);
+    modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
+    modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
+                       1, GL_FALSE, &modelMatrix[0][0]);
+    glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
+                 &glm::vec3(0.5f, 0.0f, 0.0f)[0]);
+
+    if (this->texture) {
+        this->texture->bind(0);
     } else {
-        throw std::runtime_error("Could not initialize GLAD!");
+        Texture2D::unbind(0);
     }
 
-    // Set up the view port
-    glViewport(0, 0, w(), h());
+    glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"), 0);
 
-    // clear the window, be sure to clear the Z-Buffer too
-    glClearColor(0, 0, .3f, 0);  // background should be blue
+    // Time uniform for wave animation
+    static auto start = std::chrono::steady_clock::now();
+    float t =
+        std::chrono::duration<float>(std::chrono::steady_clock::now() - start)
+            .count();
+    glUniform1f(glGetUniformLocation(this->shader->Program, "u_time"), t);
 
-    // we need to clear out the stencil buffer since we'll use
-    // it for shadows
-    glClearStencil(0);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    glEnable(GL_DEPTH);
+    // Wave uniforms
+    if (tw->shaderBrowser->value() == 3 || tw->shaderBrowser->value() == 4 ||
+        tw->shaderBrowser->value() == 5) {
+        int waveCount = (int)water->waveDirections.size();
+        glUniform1i(glGetUniformLocation(this->shader->Program, "u_waveCount"),
+                    waveCount);
+        if (waveCount > 0) {
+            glUniform2fv(
+                glGetUniformLocation(this->shader->Program, "u_direction"),
+                waveCount, &water->waveDirections[0][0]);
+            glUniform1fv(
+                glGetUniformLocation(this->shader->Program, "u_wavelength"),
+                waveCount, &water->waveWavelengths[0]);
+            glUniform1fv(
+                glGetUniformLocation(this->shader->Program, "u_amplitude"),
+                waveCount, &water->waveAmplitudes[0]);
+            glUniform1fv(glGetUniformLocation(this->shader->Program, "u_speed"),
+                         waveCount, &water->waveSpeeds[0]);
+        }
+        glUniform2fv(glGetUniformLocation(this->shader->Program, "u_scroll"), 1,
+                     &water->heightMapScroll[0]);
+        glUniform1f(
+            glGetUniformLocation(this->shader->Program, "u_heightScale"),
+            water->heightMapScale);
+
+        // Reflection & Refraction textures for water shader
+        if (water->reflectionTexture != 0) {
+            glActiveTexture(GL_TEXTURE1);
+            glBindTexture(GL_TEXTURE_2D, water->reflectionTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_reflectionTex"),
+                1);
+        }
+        if (water->refractionTexture != 0) {
+            glActiveTexture(GL_TEXTURE2);
+            glBindTexture(GL_TEXTURE_2D, water->refractionTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_refractionTex"),
+                2);
+        }
+        if (water->refractionDepthTexture != 0) {
+            glActiveTexture(GL_TEXTURE3);
+            glBindTexture(GL_TEXTURE_2D, water->refractionDepthTexture);
+            glUniform1i(
+                glGetUniformLocation(this->shader->Program, "u_depthTex"), 3);
+        }
+
+        glUniform1f(
+            glGetUniformLocation(this->shader->Program, "u_waterHeight"),
+            water->waterHeight);
+
+        if (tw->shaderBrowser->value() == 5) {
+            glUniform1f(glGetUniformLocation(this->shader->Program,
+                                             "u_distortionStrength"),
+                        0.0012f);
+            glUniform1f(
+                glGetUniformLocation(this->shader->Program, "u_normalStrength"),
+                0.015f);
+            glUniform3f(
+                glGetUniformLocation(this->shader->Program, "u_waterColor"),
+                0.02f, 0.32f, 0.52f);
+            glUniform1f(glGetUniformLocation(this->shader->Program,
+                                             "u_reflectRefractRatio"),
+                        (float)tw->reflectRefractSlider->value());
+        }
+    }
+
+    // Camera position and skybox for shader
+    glm::mat4 viewMatrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
+    glm::mat4 invView = glm::inverse(viewMatrix);
+    glm::vec3 cameraPos = glm::vec3(invView[3]);
+    glUniform3fv(glGetUniformLocation(this->shader->Program, "u_cameraPos"), 1,
+                 &cameraPos[0]);
+
+    // Bind skybox for reflection
+    if (skybox && skybox->getTexture() != 0) {
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->getTexture());
+        GLint skyboxLoc =
+            glGetUniformLocation(this->shader->Program, "u_skybox");
+        if (skyboxLoc >= 0) {
+            glUniform1i(skyboxLoc, 5);
+        }
+    }
+
+    //bind VAO
+    glBindVertexArray(this->plane->vao);
+
+    // Enable blending for transparency
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    glDrawElements(GL_TRIANGLES, this->plane->element_amount, GL_UNSIGNED_INT,
+                   0);
+
+    glDisable(GL_BLEND);
+
+    //unbind VAO
+    glBindVertexArray(0);
+
+    //unbind shader(switch to fixed pipeline)
+    glUseProgram(0);
+}
+
+void TrainView::draw() {
+    // ---------- Initialize GLAD ----------
+    if (!glInited) {
+        if (!gladLoadGL()) {
+            throw std::runtime_error("Could not initialize GLAD!");
+        }
+        // Initialize Skybox once
+        skybox->init();
+        glInited = true;
+    }
+
+    clearGlad();
+
+    // Reinitialize content shaders depending on selection
+    static int lastShader = -1;
+    int shaderType = tw->shaderBrowser->value();
+
+    if (shaderType != lastShader) {
+        if (shaderType == 1) {
+            church->initSimple();
+        } else if (shaderType == 2) {
+            church->initColorful();
+        } else if (shaderType == 3) {
+            water->initHeightMapWave();
+        } else if (shaderType == 4) {
+            water->initSineWave();
+        } else if (shaderType == 5) {
+            water->initReflectionWater();
+        }
+        lastShader = shaderType;
+    }
+
+    if (shaderType == 1) {
+        this->shader = church->shader;
+        this->plane = church->plane;
+        this->texture = church->texture;
+        this->commonMatrices = church->commonMatrices;
+    } else if (shaderType == 2) {
+        this->shader = church->shader;
+        this->plane = church->plane;
+        this->texture = church->texture;
+        this->commonMatrices = church->commonMatrices;
+    } else if (shaderType == 3) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 4) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 5) {
+        this->shader = water->shader;
+        this->plane = water->plane;
+        this->texture = water->texture;
+        this->commonMatrices = water->commonMatrices;
+    } else {
+        clearGlad();
+    }
+
+    // ---------- Initialize Framebuffer Shaders ----------
+    initFrameBufferShader();
+    mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
+    tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
-    // prepare for projection
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w(), h());
+
+    // clear the window, be sure to clear the Z-Buffer too (single clear)
+    glClearColor(0, 0, .3f, 0);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+
+    // ---------- Bind framebuffer ----------
+    if (tw->pixelizeButton->value() || tw->toonButton->value()) {
+        mainFrameBuffer->bind();
+    } else {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+    }
+
+    glClearColor(0, 0, .3f, 0);
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    glEnable(GL_DEPTH_TEST);
+
+    // ---------- Set up Projection and Lighting ----------
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
 
@@ -294,20 +547,19 @@ void TrainView::draw() {
 
     setLighting();
 
-    //*********************************************************************
-    // now draw the ground plane
-    //*********************************************************************
-    // set to opengl fixed pipeline(use opengl 1.x draw function)
-    glUseProgram(0);
+    // ---------- Draw the skybox ----------
+    glm::mat4 view_matrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+    glm::mat4 projection_matrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
 
+    skybox->draw(view_matrix, projection_matrix);
+
+    // ---------- Draw the floor ----------
+    glUseProgram(0);
     setupFloor();
-    // glDisable(GL_LIGHTING);
     drawFloor(200, 10);
 
-    //*********************************************************************
-    // now draw the object and we need to do it twice
-    // once for real, and then once for shadows
-    //*********************************************************************
     glEnable(GL_LIGHTING);
     setupObjects();
 
@@ -319,6 +571,111 @@ void TrainView::draw() {
         drawStuff(true);
         unsetupShadows();
     }
+
+    // ---------- Draw the objects and shadows ----------
+    glEnable(GL_LIGHTING);
+    setupObjects();
+    drawStuff();
+
+    // this time drawing is for shadows (except for top view)
+    if (!tw->topCam->value()) {
+        setupShadows();
+        drawStuff(true);
+        unsetupShadows();
+    }
+
+    // ---------- Render reflection & refraction for water ----------
+    if (shaderType == 5) {
+        // Store original viewport
+        GLint viewport[4];
+        glGetIntegerv(GL_VIEWPORT, viewport);
+
+        water->renderReflection(this);
+        water->renderRefraction(this);
+
+        // Restore viewport and matrices
+        glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+        glMatrixMode(GL_PROJECTION);
+        glLoadIdentity();
+        setProjection();
+        setLighting();
+    }
+
+    // ---------- Draw the plane ----------
+    drawPlane();
+
+    // ---------- Post processing ----------
+    glDisable(GL_DEPTH_TEST);
+    if (tw->toonButton->value() && tw->pixelizeButton->value()) {
+        // Step A: Apply Toon Shader (Main -> Temp)
+        tempFrameBuffer->bind();  // Draw into temporary buffer
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        toonShader->Use();
+        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
+                    0);
+
+        mainFrameBuffer->bindTexture(0);  // Read from Main
+        mainFrameBuffer->drawQuad();
+
+        // Step B: Apply Pixel Shader (Temp -> Screen)
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Back to screen
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        pixelShader->Use();
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
+                    5.0f);
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
+                    0);
+
+        tempFrameBuffer->bindTexture(
+            0);  // Read from Temp (which has the Toon result)
+        tempFrameBuffer->drawQuad();
+    } else if (tw->pixelizeButton->value()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        pixelShader->Use();
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
+                    5.0f);
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
+                    0);
+
+        mainFrameBuffer->bindTexture(0);
+        mainFrameBuffer->drawQuad();
+    } else if (tw->toonButton->value()) {
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        toonShader->Use();
+        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
+                    (float)w());
+        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
+                    (float)h());
+        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
+                    0);
+
+        mainFrameBuffer->bindTexture(0);
+        mainFrameBuffer->drawQuad();
+    }
+
+    // Unbind
+    glBindTexture(GL_TEXTURE_2D, 0);
 }
 
 //************************************************************************
@@ -1256,6 +1613,13 @@ void TrainView::drawTrain(bool doingShadows) {
 }
 
 void TrainView::drawOden(bool doingShadows) {
+    const float offsetX = 50.0f;
+    const float offsetY = 0.0f;
+    const float offsetZ = -30.0f;
+
+    glPushMatrix();
+    glTranslatef(offsetX, offsetY, offsetZ);
+
     // ----------- Tofu --------------
     const float tofuWidth = 20.0f;
     const float tofuDepth = 20.0f;
@@ -1394,6 +1758,8 @@ void TrainView::drawOden(bool doingShadows) {
     glVertex3f(-halfPigBloodCakeWidth, -halfPigBloodCakeHeight,
                halfPigBloodCakeDepth);
     glEnd();
+
+    glPopMatrix();
 
     glPopMatrix();
 }
