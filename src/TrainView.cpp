@@ -404,6 +404,9 @@ void TrainView::drawPlane() {
             glUniform3f(
                 glGetUniformLocation(this->shader->Program, "u_waterColor"),
                 0.02f, 0.32f, 0.52f);
+            glUniform1f(glGetUniformLocation(this->shader->Program,
+                                             "u_reflectRefractRatio"),
+                        (float)tw->reflectRefractSlider->value());
         }
     }
 

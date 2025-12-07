@@ -17,6 +17,7 @@ uniform float u_waterHeight;
 uniform float u_time;
 uniform float u_distortionStrength;
 uniform float u_normalStrength;
+uniform float u_reflectRefractRatio;
 uniform vec3 u_waterColor;
 
 // Procedural normal waves for realistic water surface
@@ -49,11 +50,11 @@ void main()
     ) * u_distortionStrength;
 
     // Use stronger normal-based distortion for refraction to show underwater objects shifting more
-    vec2 normalDistort = normal.xz * 0.25;  // 增加從 0.08 到 0.25
+    vec2 normalDistort = normal.xz * 0.25;
 
     // Ensure UV coordinates stay within valid range [0, 1]
     vec2 reflectUV = clamp(baseUV + ripple, 0.002, 0.998);
-    vec2 refractUV = clamp(baseUV - normalDistort - ripple * 1.2, 0.002, 0.998);  // 增加波紋影響從 0.5 到 1.2
+    vec2 refractUV = clamp(baseUV - normalDistort - ripple * 1.2, 0.002, 0.998);
 
     // Sample reflection and refraction from FBOs
     vec4 reflection = texture(u_reflectionTex, reflectUV);
@@ -73,8 +74,8 @@ void main()
 
     // Fresnel term for realistic blending
     // Objects appear more reflective at shallow angles (grazing angles)
-    float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.5);  // 降低從 3.5 到 2.5，讓折射更明顯
-    fresnel = clamp(fresnel * 1.0 + 0.1, 0.15, 0.7);  // 調整範圍讓折射佔更大比重
+    float fresnel = pow(1.0 - max(dot(viewDir, normal), 0.0), 2.5);
+    fresnel = clamp(fresnel * 1.0 + 0.1, 0.15, 0.7);
 
     // Depth-based attenuation to keep shallow areas lighter
     float depthSample = texture(u_depthTex, refractUV).r;
@@ -82,8 +83,8 @@ void main()
 
     // Balance reflection and refraction
     // Looking at steep angles: more reflection
-    // Looking down: more refraction (更強調折射)
-    float reflectionWeight = fresnel * 0.7;  // 降低反射權重，讓折射更明顯
+    // Looking down: more refraction
+    float reflectionWeight = fresnel * u_reflectRefractRatio;
     vec3 combined = mix(refraction.rgb, reflection.rgb, reflectionWeight);
 
     // Add water color for absorption effect

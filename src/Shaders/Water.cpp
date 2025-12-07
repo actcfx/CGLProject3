@@ -40,18 +40,30 @@ void Water::cleanup() {
         this->texture = nullptr;
     }
 
-    if (reflectionFBO)
+    if (reflectionFBO) {
         glDeleteFramebuffers(1, &reflectionFBO);
-    if (reflectionTexture)
+        reflectionFBO = 0;
+    }
+    if (reflectionTexture) {
         glDeleteTextures(1, &reflectionTexture);
-    if (reflectionDepthRBO)
+        reflectionTexture = 0;
+    }
+    if (reflectionDepthRBO) {
         glDeleteRenderbuffers(1, &reflectionDepthRBO);
-    if (refractionFBO)
+        reflectionDepthRBO = 0;
+    }
+    if (refractionFBO) {
         glDeleteFramebuffers(1, &refractionFBO);
-    if (refractionTexture)
+        refractionFBO = 0;
+    }
+    if (refractionTexture) {
         glDeleteTextures(1, &refractionTexture);
-    if (refractionDepthTexture)
+        refractionTexture = 0;
+    }
+    if (refractionDepthTexture) {
         glDeleteTextures(1, &refractionDepthTexture);
+        refractionDepthTexture = 0;
+    }
 }
 
 void Water::initSineWave() {
@@ -425,6 +437,7 @@ void Water::initReflectionWater() {
 }
 
 void Water::initWaterFBOs(int width, int height) {
+    bool resize = (width != waterFBOWidth || height != waterFBOHeight);
     waterFBOWidth = width;
     waterFBOHeight = height;
 
@@ -437,27 +450,31 @@ void Water::initWaterFBOs(int width, int height) {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, reflectionFBO);
 
-    if (reflectionTexture == 0) {
-        glGenTextures(1, &reflectionTexture);
+    if (reflectionTexture == 0 || resize) {
+        if (reflectionTexture == 0) {
+            glGenTextures(1, &reflectionTexture);
+        }
+        glBindTexture(GL_TEXTURE_2D, reflectionTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                               reflectionTexture, 0);
     }
-    glBindTexture(GL_TEXTURE_2D, reflectionTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                 GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           reflectionTexture, 0);
 
-    if (reflectionDepthRBO == 0) {
-        glGenRenderbuffers(1, &reflectionDepthRBO);
+    if (reflectionDepthRBO == 0 || resize) {
+        if (reflectionDepthRBO == 0) {
+            glGenRenderbuffers(1, &reflectionDepthRBO);
+        }
+        glBindRenderbuffer(GL_RENDERBUFFER, reflectionDepthRBO);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, waterFBOWidth,
+                              waterFBOHeight);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                                  GL_RENDERBUFFER, reflectionDepthRBO);
     }
-    glBindRenderbuffer(GL_RENDERBUFFER, reflectionDepthRBO);
-    glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT24, waterFBOWidth,
-                          waterFBOHeight);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
-                              GL_RENDERBUFFER, reflectionDepthRBO);
 
     GLenum reflectionStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (reflectionStatus != GL_FRAMEBUFFER_COMPLETE) {
@@ -471,31 +488,35 @@ void Water::initWaterFBOs(int width, int height) {
     }
     glBindFramebuffer(GL_FRAMEBUFFER, refractionFBO);
 
-    if (refractionTexture == 0) {
-        glGenTextures(1, &refractionTexture);
+    if (refractionTexture == 0 || resize) {
+        if (refractionTexture == 0) {
+            glGenTextures(1, &refractionTexture);
+        }
+        glBindTexture(GL_TEXTURE_2D, refractionTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
+                     GL_RGB, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
+                               refractionTexture, 0);
     }
-    glBindTexture(GL_TEXTURE_2D, refractionTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, waterFBOWidth, waterFBOHeight, 0,
-                 GL_RGB, GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D,
-                           refractionTexture, 0);
 
-    if (refractionDepthTexture == 0) {
-        glGenTextures(1, &refractionDepthTexture);
+    if (refractionDepthTexture == 0 || resize) {
+        if (refractionDepthTexture == 0) {
+            glGenTextures(1, &refractionDepthTexture);
+        }
+        glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, waterFBOWidth,
+                     waterFBOHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                               refractionDepthTexture, 0);
     }
-    glBindTexture(GL_TEXTURE_2D, refractionDepthTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT32, waterFBOWidth,
-                 waterFBOHeight, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
-                           refractionDepthTexture, 0);
 
     GLenum refractionStatus = glCheckFramebufferStatus(GL_FRAMEBUFFER);
     if (refractionStatus != GL_FRAMEBUFFER_COMPLETE) {
