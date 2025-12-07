@@ -102,6 +102,7 @@ public:
 
     Fl_Button* toonButton;
 
+    Fl_Button* physicsButton;
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
 #ifdef EXAMPLE_SOLUTION

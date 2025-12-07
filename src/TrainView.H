@@ -94,6 +94,9 @@ public:
     TrainWindow* tw;   // The parent of this display window
     CTrack* m_pTrack;  // The track of the entire scene
 
+    // Accessors for the train's current frame
+    Pnt3f getTrainForward() const { return trainForward; }
+
 private:
     // ---------- Lighting ----------
     void setLighting();

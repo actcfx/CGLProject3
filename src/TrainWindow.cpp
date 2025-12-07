@@ -182,6 +182,11 @@ TrainWindow::TrainWindow(const int x, const int y)
         toonButton = new Fl_Button(675, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
 
+        pty += 30;
+
+        physicsButton = new Fl_Button(605, pty, 60, 20, "Physics");
+        togglify(physicsButton, 0);
+
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);
 #endif
@@ -237,6 +242,18 @@ void TrainWindow::advanceTrain(float dir)
     const float baseStep = 0.1f;
     float delta = dir * sliderSpeed * baseStep;
 
+    if (arcLength && arcLength->value() && physicsButton && physicsButton->value() && trainView) {
+        const Pnt3f forward = trainView->getTrainForward();
+        const float slope = forward.y;  // positive when climbing
+        const float slopeFactor = 0.6f;
+        float speedScale = 1.0f - slopeFactor * slope;
+        if (speedScale < 0.2f)
+            speedScale = 0.2f;
+        else if (speedScale > 2.0f)
+            speedScale = 2.0f;
+        delta *= speedScale;
+    }
+    
     if (arcLength && arcLength->value()) {
         const int splineMode = trainView->tw->splineBrowser->value();
         const size_t minPoints = (splineMode == 1) ? 2 : 4;
