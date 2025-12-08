@@ -471,8 +471,16 @@ void TrainView::draw() {
         // Initialize Skybox once
         skybox->init();
         totem->init();
-        terrain->init();
+        terrain->init(tw);
         glInited = true;
+    }
+
+    // Check for Minecraft mode toggle
+    static int lastMinecraftState = -1;
+    int currentMinecraftState = tw->minecraftButton->value();
+    if (currentMinecraftState != lastMinecraftState) {
+        terrain->rebuild();
+        lastMinecraftState = currentMinecraftState;
     }
 
     clearGlad();
@@ -571,23 +579,11 @@ void TrainView::draw() {
 
     skybox->draw(view_matrix, projection_matrix);
 
-    // ---------- Draw the floor ----------
+    // ---------- Draw the objects and shadows ----------
     glUseProgram(0);
     glEnable(GL_LIGHTING);
     setupObjects();
 
-    drawStuff();
-
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
-        setupShadows();
-        drawStuff(true);
-        unsetupShadows();
-    }
-
-    // ---------- Draw the objects and shadows ----------
-    glEnable(GL_LIGHTING);
-    setupObjects();
     drawStuff();
 
     // this time drawing is for shadows (except for top view)

@@ -12,20 +12,28 @@
 
 #include "../RenderUtilities/BufferObject.h"
 #include "../RenderUtilities/Shader.h"
+#include "../TrainWindow.H"
+
+class TrainWindow;  // Forward declaration
 
 class Terrain {
 private:
     int width;
     int depth;
-    float scaleXZ = 2.0f;  // Scale the grid horizontally
+    float scaleXZ = 2.0f;      // Scale the grid horizontally
+    int blockSize = 10;        // size of blocks in pixels (Minecraft style)
     std::vector<float> heightMap;
 
     VAO* plane = nullptr;
     Shader* shader = nullptr;
 
+    TrainWindow* tw = nullptr;
+
 public:
     int getWidth() const { return width; }
+
     int getDepth() const { return depth; }
+
     float getScaleXZ() const { return scaleXZ; }
 
 private:
@@ -45,20 +53,42 @@ private:
             return;
         }
 
-        // Apply Gaussian Blur to smooth the terrain
-        // Kernel size (15, 15) for significant smoothing
-        cv::GaussianBlur(image, image, cv::Size(15, 15), 0);
+        // Remove Gaussian Blur to keep edges sharp for Minecraft look
+        // cv::GaussianBlur(image, image, cv::Size(15, 15), 0);
 
         width = image.cols;
         depth = image.rows;
         heightMap.resize(width * depth);
 
+        int step = blockSize;  // Step size for X and Z (block width/depth)
+        float quantStep = step * 2;
+
         // Normalize and populate heightMap
         for (int z = 0; z < depth; ++z) {
             for (int x = 0; x < width; ++x) {
-                unsigned char color = image.at<unsigned char>(z, x);
-                float h = color / 255.0f * 150.0f - 50.0f;
-                setHeight(x, z, h);
+                if (tw && tw->minecraftButton->value()) {
+                    // Quantize coordinates to create blocks
+                    int sampleX = (x / step) * step;
+                    int sampleZ = (z / step) * step;
+
+                    // Boundary check
+                    if (sampleX >= width)
+                        sampleX = width - 1;
+                    if (sampleZ >= depth)
+                        sampleZ = depth - 1;
+
+                    unsigned char color =
+                        image.at<unsigned char>(sampleZ, sampleX);
+
+                    float rawH = color - 100.0f;
+                    float h = std::floor(rawH / quantStep) * quantStep + 14.0f;
+
+                    setHeight(x, z, h);
+                } else {
+                    unsigned char color = image.at<unsigned char>(z, x);
+                    float h = color - 100.0f;
+                    setHeight(x, z, h);
+                }
             }
         }
     }
@@ -84,48 +114,147 @@ private:
     }
 
 public:
-    void init() {
+    Terrain(int width = 200, int depth = 200) : width(width), depth(depth) {}
+
+    ~Terrain() {
+        if (plane) {
+            glDeleteVertexArrays(1, &plane->vao);
+            glDeleteBuffers(2, plane->vbo);
+            glDeleteBuffers(1, &plane->ebo);
+            delete plane;
+            plane = nullptr;
+        }
+        if (shader) {
+            delete shader;
+            shader = nullptr;
+        }
+    }
+
+    void init(TrainWindow* tw) {
+        if (!this->tw) {
+            this->tw = tw;
+        }
+
         if (!this->shader) {
             this->shader =
                 new Shader("./shaders/terrain.vert", nullptr, nullptr, nullptr,
                            "./shaders/terrain.frag");
         }
 
+        loadHeightMap("./images/terrainHeightMap.jpg");
+        buildMesh();
+    }
+
+    void rebuild() {
+        if (tw) {
+            loadHeightMap("./images/terrainHeightMap.jpg");
+            buildMesh();
+        }
+    }
+
+    void buildMesh() {
+        // Clean up existing buffers
+        if (plane) {
+            glDeleteVertexArrays(1, &plane->vao);
+            glDeleteBuffers(2, plane->vbo);
+            glDeleteBuffers(1, &plane->ebo);
+            delete plane;
+            plane = nullptr;
+        }
+
+        // Generate coarse block-based geometry to produce a Minecraft-like
+        // stepped look. We duplicate vertices per-triangle so that each
+        // triangle has a constant (flat) normal.
         std::vector<GLfloat> vertices;
         std::vector<GLfloat> normals;
         std::vector<GLuint> indices;
+        if (tw && tw->minecraftButton->value()) {
+            // Voxel-style blocks: build cubes per block cell with vertical sides.
+            GLuint curIndex = 0;
+            const float cell = blockSize * scaleXZ;
 
-        // Generate vertices
-        for (int z = 0; z < depth; ++z) {
-            for (int x = 0; x < width; ++x) {
-                // Position
-                vertices.push_back(x * scaleXZ);
-                vertices.push_back(getHeight(x, z));
-                vertices.push_back(z * scaleXZ);
+            auto pushQuad = [&](const glm::vec3& a, const glm::vec3& b,
+                                const glm::vec3& c, const glm::vec3& d,
+                                const glm::vec3& n) {
+                // two triangles: a,b,c and a,c,d
+                vertices.insert(vertices.end(),
+                                { a.x, a.y, a.z, b.x, b.y, b.z, c.x, c.y, c.z,
+                                  d.x, d.y, d.z });
+                normals.insert(normals.end(), { n.x, n.y, n.z, n.x, n.y, n.z,
+                                                n.x, n.y, n.z, n.x, n.y, n.z });
+                indices.insert(indices.end(),
+                               { curIndex, curIndex + 1, curIndex + 2, curIndex,
+                                 curIndex + 2, curIndex + 3 });
+                curIndex += 4;
+            };
 
-                // Normal
-                glm::vec3 n = getNormal(x, z);
-                normals.push_back(n.x);
-                normals.push_back(n.y);
-                normals.push_back(n.z);
+            for (int z = 0; z < depth; z += blockSize) {
+                for (int x = 0; x < width; x += blockSize) {
+                    float h = getHeight(x, z);
+                    float y0 = std::min(h, -100.0f);
+                    float y1 = h;
+
+                    float x0 = x * scaleXZ;
+                    float z0 = z * scaleXZ;
+                    float x1 = x0 + cell;
+                    float z1 = z0 + cell;
+
+                    glm::vec3 p000(x0, y0, z0);
+                    glm::vec3 p100(x1, y0, z0);
+                    glm::vec3 p110(x1, y1, z0);
+                    glm::vec3 p010(x0, y1, z0);
+                    glm::vec3 p001(x0, y0, z1);
+                    glm::vec3 p101(x1, y0, z1);
+                    glm::vec3 p111(x1, y1, z1);
+                    glm::vec3 p011(x0, y1, z1);
+
+                    // Top (+Y)
+                    pushQuad(p010, p110, p111, p011, glm::vec3(0, 1, 0));
+                    // Bottom (-Y)
+                    pushQuad(p000, p001, p101, p100, glm::vec3(0, -1, 0));
+                    // +X
+                    pushQuad(p100, p101, p111, p110, glm::vec3(1, 0, 0));
+                    // -X
+                    pushQuad(p000, p010, p011, p001, glm::vec3(-1, 0, 0));
+                    // +Z
+                    pushQuad(p001, p011, p111, p101, glm::vec3(0, 0, 1));
+                    // -Z
+                    pushQuad(p000, p100, p110, p010, glm::vec3(0, 0, -1));
+                }
             }
-        }
+        } else {
+            // Generate vertices
+            for (int z = 0; z < depth; ++z) {
+                for (int x = 0; x < width; ++x) {
+                    // Position
+                    vertices.push_back(x * scaleXZ);
+                    vertices.push_back(getHeight(x, z));
+                    vertices.push_back(z * scaleXZ);
 
-        // Generate indices
-        for (int z = 0; z < depth - 1; ++z) {
-            for (int x = 0; x < width - 1; ++x) {
-                int topLeft = z * width + x;
-                int topRight = topLeft + 1;
-                int bottomLeft = (z + 1) * width + x;
-                int bottomRight = bottomLeft + 1;
+                    // Normal
+                    glm::vec3 n = getNormal(x, z);
+                    normals.push_back(n.x);
+                    normals.push_back(n.y);
+                    normals.push_back(n.z);
+                }
+            }
 
-                indices.push_back(topLeft);
-                indices.push_back(bottomLeft);
-                indices.push_back(topRight);
+            // Generate indices
+            for (int z = 0; z < depth - 1; ++z) {
+                for (int x = 0; x < width - 1; ++x) {
+                    int topLeft = z * width + x;
+                    int topRight = topLeft + 1;
+                    int bottomLeft = (z + 1) * width + x;
+                    int bottomRight = bottomLeft + 1;
 
-                indices.push_back(topRight);
-                indices.push_back(bottomLeft);
-                indices.push_back(bottomRight);
+                    indices.push_back(topLeft);
+                    indices.push_back(bottomLeft);
+                    indices.push_back(topRight);
+
+                    indices.push_back(topRight);
+                    indices.push_back(bottomLeft);
+                    indices.push_back(bottomRight);
+                }
             }
         }
 
@@ -162,24 +291,6 @@ public:
         glBindVertexArray(0);
     }
 
-    Terrain(int width = 200, int depth = 200) : width(width), depth(depth) {
-        loadHeightMap("./images/terrainHeightMap.jpg");
-    }
-
-    ~Terrain() {
-        if (plane) {
-            glDeleteVertexArrays(1, &plane->vao);
-            glDeleteBuffers(2, plane->vbo);
-            glDeleteBuffers(1, &plane->ebo);
-            delete plane;
-            plane = nullptr;
-        }
-        if (shader) {
-            delete shader;
-            shader = nullptr;
-        }
-    }
-
     void generateBasin() {
         float centerX = width / 2.0f;
         float centerZ = depth / 2.0f;
@@ -213,7 +324,7 @@ public:
             glDeleteBuffers(1, &plane->ebo);
             delete plane;
             plane = nullptr;
-            init();
+            init(tw);
         }
     }
 

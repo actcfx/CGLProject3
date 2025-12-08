@@ -184,8 +184,13 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 30;
 
+        // ---------- Physics Button ----------
         physicsButton = new Fl_Button(605, pty, 60, 20, "Physics");
         togglify(physicsButton, 0);
+
+        // ---------- Minecraft Button ----------
+        minecraftButton = new Fl_Button(675, pty, 60, 20, "Minecraft");
+        togglify(minecraftButton, 1);
 
         pty += 30;
 
