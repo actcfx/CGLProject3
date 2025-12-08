@@ -253,19 +253,43 @@ void TrainWindow::advanceTrain(float dir)
     const float baseStep = 0.1f;
     float delta = dir * sliderSpeed * baseStep;
 
-    if (arcLength && arcLength->value() && physicsButton && physicsButton->value() && trainView) {
+    const bool useArcLength = arcLength && arcLength->value();
+    const bool usePhysics =
+        useArcLength && physicsButton && physicsButton->value() && trainView;
+
+    if (usePhysics) {
         const Pnt3f forward = trainView->getTrainForward();
-        const float slope = forward.y;  // positive when climbing
-        const float slopeFactor = 0.6f;
-        float speedScale = 1.0f - slopeFactor * slope;
-        if (speedScale < 0.2f)
-            speedScale = 0.2f;
-        else if (speedScale > 2.0f)
-            speedScale = 2.0f;
-        delta *= speedScale;
+        float directionSign = 0.0f;
+
+        // Determine the sign of the slope
+        if (delta > 0.0f)
+            directionSign = 1.0f;
+        else if (delta < 0.0f)
+            directionSign = -1.0f;
+        else
+            directionSign = (dir >= 0.0f) ? 1.0f : -1.0f;
+
+        const float signedSlope = forward.y * directionSign;
+        const float gravityGain = 0.12f;
+        const float damping = 0.08f;
+        const float minScale = 0.1f;
+        const float maxScale = 6.0f;
+
+        // Update the physics speed scale based on the slope and gravity
+        physicsSpeedScale += (-signedSlope) * gravityGain;
+        if (physicsSpeedScale < minScale)
+            physicsSpeedScale = minScale;
+        else if (physicsSpeedScale > maxScale)
+            physicsSpeedScale = maxScale;
+
+        // Apply damping to smooth out speed changes
+        physicsSpeedScale += (1.0f - physicsSpeedScale) * damping;
+        delta *= physicsSpeedScale;
+    } else {
+        physicsSpeedScale = 1.0f;
     }
-    
-    if (arcLength && arcLength->value()) {
+
+    if (useArcLength) {
         const int splineMode = trainView->tw->splineBrowser->value();
         const size_t minPoints = (splineMode == 1) ? 2 : 4;
         if (pointCount < minPoints)
