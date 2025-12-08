@@ -187,6 +187,17 @@ TrainWindow::TrainWindow(const int x, const int y)
         physicsButton = new Fl_Button(605, pty, 60, 20, "Physics");
         togglify(physicsButton, 0);
 
+        pty += 30;
+
+        // ---------- Reflection/Refraction Ratio Slider ----------
+        reflectRefractSlider =
+            new Fl_Value_Slider(700, pty, 95, 20, "Reflect/Refract");
+        reflectRefractSlider->range(0.0, 1.0);
+        reflectRefractSlider->value(0.7);
+        reflectRefractSlider->align(FL_ALIGN_LEFT);
+        reflectRefractSlider->type(FL_HORIZONTAL);
+        reflectRefractSlider->callback((Fl_Callback*)damageCB, this);
+
 #ifdef EXAMPLE_SOLUTION
         makeExampleWidgets(this, pty);
 #endif
