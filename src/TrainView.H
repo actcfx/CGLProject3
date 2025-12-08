@@ -107,7 +107,6 @@ public:
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
-
 private:
     // ---------- Lighting ----------
     void setLighting();
