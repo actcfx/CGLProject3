@@ -36,7 +36,7 @@ public:
 
     int waterFBOWidth = 1024;
     int waterFBOHeight = 1024;
-    float waterHeight = 10.0f;
+    float waterHeight = 0.0f;
 
     // Wave parameters
     std::vector<glm::vec2> waveDirections;

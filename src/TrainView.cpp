@@ -66,6 +66,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     water = new Water();
     skybox = new Skybox();
     totem = new TotemOfUndying();
+    terrain = new Terrain();
 }
 
 //************************************************************************
@@ -322,8 +323,20 @@ void TrainView::drawPlane() {
     this->shader->Use();
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    if (tw->shaderBrowser->value() == 5) {
+        float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+        float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+        float scaleX = terrainWidth / 10.0f;
+        float scaleZ = terrainDepth / 10.0f;
+
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 0.0f, 0.0f));
+        modelMatrix =
+            glm::scale(modelMatrix, glm::vec3(scaleX, scaleX, scaleZ));
+    } else {
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 10.0f, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    }
+
     glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
                        1, GL_FALSE, &modelMatrix[0][0]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
@@ -458,6 +471,7 @@ void TrainView::draw() {
         // Initialize Skybox once
         skybox->init();
         totem->init();
+        terrain->init();
         glInited = true;
     }
 
@@ -559,9 +573,6 @@ void TrainView::draw() {
 
     // ---------- Draw the floor ----------
     glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
-
     glEnable(GL_LIGHTING);
     setupObjects();
 
@@ -613,6 +624,9 @@ void TrainView::draw() {
     glm::vec3 totemCameraPos = glm::vec3(invView[3]);
 
     totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
+
+    // ---------- Draw the terrain ----------
+    terrain->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
 
     // ---------- Draw the plane ----------
     drawPlane();

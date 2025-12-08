@@ -583,8 +583,6 @@ void Water::renderReflection(TrainView* tw) {
 
     // Draw all scene objects in reflection view
     glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
 
     glEnable(GL_LIGHTING);
     setupObjects();
@@ -644,11 +642,6 @@ void Water::renderRefraction(TrainView* tw) {
 
     // Set up lighting for refraction view
     tw->setLighting();
-
-    // Draw floor (below water)
-    glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
 
     // Draw all scene objects that intersect with water (for underwater appearance)
     glEnable(GL_LIGHTING);

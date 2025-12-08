@@ -60,7 +60,9 @@ class ControlPoint;
 #include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
+#include "Stuffs/Terrain.hpp"
 #include "Stuffs/totemOfUndying.hpp"
+
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -104,6 +106,7 @@ public:
     Water* water = nullptr;
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
+    Terrain* terrain = nullptr;
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
