@@ -104,6 +104,9 @@ public:
 
     Fl_Value_Slider* reflectRefractSlider;
 
+    Fl_Button* physicsButton;
+
+    float physicsSpeedScale = 1.0f;  // persistent inertia multiplier for simple physics
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
 #ifdef EXAMPLE_SOLUTION

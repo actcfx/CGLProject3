@@ -72,7 +72,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         pty += 25;
         speed = new Fl_Value_Slider(655, pty, 140, 20, "speed");
         speed->range(0, 10);
-        speed->value(2);
+        speed->value(1);
         speed->align(FL_ALIGN_LEFT);
         speed->type(FL_HORIZONTAL);
 
@@ -184,6 +184,11 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 30;
 
+        physicsButton = new Fl_Button(605, pty, 60, 20, "Physics");
+        togglify(physicsButton, 0);
+
+        pty += 30;
+
         // ---------- Reflection/Refraction Ratio Slider ----------
         reflectRefractSlider =
             new Fl_Value_Slider(700, pty, 95, 20, "Reflect/Refract");
@@ -248,7 +253,43 @@ void TrainWindow::advanceTrain(float dir)
     const float baseStep = 0.1f;
     float delta = dir * sliderSpeed * baseStep;
 
-    if (arcLength && arcLength->value()) {
+    const bool useArcLength = arcLength && arcLength->value();
+    const bool usePhysics =
+        useArcLength && physicsButton && physicsButton->value() && trainView;
+
+    if (usePhysics) {
+        const Pnt3f forward = trainView->getTrainForward();
+        float directionSign = 0.0f;
+
+        // Determine the sign of the slope
+        if (delta > 0.0f)
+            directionSign = 1.0f;
+        else if (delta < 0.0f)
+            directionSign = -1.0f;
+        else
+            directionSign = (dir >= 0.0f) ? 1.0f : -1.0f;
+
+        const float signedSlope = forward.y * directionSign;
+        const float gravityGain = 0.12f;
+        const float damping = 0.08f;
+        const float minScale = 0.1f;
+        const float maxScale = 6.0f;
+
+        // Update the physics speed scale based on the slope and gravity
+        physicsSpeedScale += (-signedSlope) * gravityGain;
+        if (physicsSpeedScale < minScale)
+            physicsSpeedScale = minScale;
+        else if (physicsSpeedScale > maxScale)
+            physicsSpeedScale = maxScale;
+
+        // Apply damping to smooth out speed changes
+        physicsSpeedScale += (1.0f - physicsSpeedScale) * damping;
+        delta *= physicsSpeedScale;
+    } else {
+        physicsSpeedScale = 1.0f;
+    }
+
+    if (useArcLength) {
         const int splineMode = trainView->tw->splineBrowser->value();
         const size_t minPoints = (splineMode == 1) ? 2 : 4;
         if (pointCount < minPoints)
