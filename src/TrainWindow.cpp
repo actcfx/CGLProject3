@@ -28,6 +28,11 @@
 #include <FL/Fl_Box.h>
 #include <FL/fl.h>
 
+// for the 3D models
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 // for using the real time clock
 #include <time.h>
 

@@ -8,6 +8,7 @@ set(LIB_DIR ${PROJECT_SOURCE_DIR}/lib/)
 include_directories(${INCLUDE_DIR})
 include_directories(${INCLUDE_DIR}glad4.6/include/)
 include_directories(${INCLUDE_DIR}glm-0.9.8.5/glm/)
+include_directories(${INCLUDE_DIR}assimp/)
 include_directories(${SRC_DIR}RenderUtilities)
 
 add_Definitions("-D_XKEYCHECK_H")
@@ -61,6 +62,11 @@ target_link_libraries(RollerCoasters
     ${LIB_DIR}ex-common.lib
     debug ${LIB_DIR}Debug/opencv_world341d.lib
     optimized ${LIB_DIR}Release/opencv_world341.lib)
+
+target_link_libraries(RollerCoasters
+    debug ${LIB_DIR}Debug/assimp-vc142-mtd.lib      
+    optimized ${LIB_DIR}Release/assimp-vc142-mt.lib 
+)
 
 target_link_libraries(RollerCoasters Utilities)
 
