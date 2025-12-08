@@ -60,7 +60,7 @@ class ControlPoint;
 #include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
-
+#include "Stuffs/totemOfUndying.hpp"
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -103,6 +103,7 @@ public:
     Church* church = nullptr;
     Water* water = nullptr;
     Skybox* skybox = nullptr;
+    TotemOfUndying* totem = nullptr;
 
 private:
     // ---------- Lighting ----------
