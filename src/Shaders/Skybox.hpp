@@ -59,9 +59,9 @@ public:
                               (void*)0);
 
         std::vector<std::string> faces{
-            "./images/skybox/right.jpg", "./images/skybox/left.jpg",
-            "./images/skybox/top.jpg",   "./images/skybox/bottom.jpg",
-            "./images/skybox/front.jpg", "./images/skybox/back.jpg"
+            "./images/skyboxSun/right.jpg", "./images/skyboxSun/left.jpg",
+            "./images/skyboxSun/top.jpg",   "./images/skyboxSun/bottom.jpg",
+            "./images/skyboxSun/front.jpg", "./images/skyboxSun/back.jpg"
         };
         textureID = loadCubeMap(faces);
 
