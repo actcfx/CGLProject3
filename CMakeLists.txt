@@ -34,7 +34,8 @@ add_executable(RollerCoasters
     ${SRC_DIR}Shaders/Church.hpp
     ${SRC_DIR}Shaders/Skybox.hpp
     ${SRC_DIR}Shaders/Water.hpp
-    ${SRC_DIR}Shaders/Water.cpp)
+    ${SRC_DIR}Shaders/Water.cpp
+    ${SRC_DIR}Stuffs/TotemOfUndying.hpp)
 
 add_library(Utilities
     ${SRC_DIR}Utilities/3DUtils.h
