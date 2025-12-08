@@ -65,6 +65,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     church = new Church();
     water = new Water();
     skybox = new Skybox();
+    totem = new TotemOfUndying();
 }
 
 //************************************************************************
@@ -456,6 +457,7 @@ void TrainView::draw() {
         }
         // Initialize Skybox once
         skybox->init();
+        totem->init();
         glInited = true;
     }
 
@@ -600,6 +602,17 @@ void TrainView::draw() {
         setProjection();
         setLighting();
     }
+
+    // ---------- Draw the totem billboard (with depth, before post-processing) ----------
+    glm::mat4 totemViewMatrix;
+    glGetFloatv(GL_MODELVIEW_MATRIX, &totemViewMatrix[0][0]);
+    glm::mat4 totemProjectionMatrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &totemProjectionMatrix[0][0]);
+
+    glm::mat4 invView = glm::inverse(totemViewMatrix);
+    glm::vec3 totemCameraPos = glm::vec3(invView[3]);
+
+    totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
 
     // ---------- Draw the plane ----------
     drawPlane();
