@@ -24,7 +24,7 @@
      Platform:    Visio Studio.Net 2003/2005
 
 *************************************************************************/
-
+#define STB_IMAGE_IMPLEMENTATION
 #include <FL/Fl_Box.h>
 #include <FL/fl.h>
 
