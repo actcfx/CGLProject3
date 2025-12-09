@@ -310,7 +310,7 @@ void Water::initHeightMapWave() {
     }
 }
 
-void Water::initReflectionWater() {
+void Water::initReflectionWater(TrainView* tw) {
     cleanup();
 
     if (!this->shader) {
@@ -329,8 +329,10 @@ void Water::initReflectionWater() {
     }
 
     if (!this->plane) {
-        const int N = 10;             // 10x10 squares
-        const float size = 10.0f;     // total width = 10
+        const int N =
+            200;  // match resolution of terrain / other water types so top view looks seamless
+        // base mesh size (unit plane). Actual size is handled by model matrix scale in drawPlane
+        float size = 1.0f;
         const float step = size / N;  // side length of each square
 
         std::vector<GLfloat> vertices;
@@ -584,13 +586,29 @@ void Water::renderReflection(TrainView* tw) {
     // Draw all scene objects in reflection view
     glUseProgram(0);
 
+    // Draw terrain in reflection (respect clip plane — keep GL_CLIP_PLANE0 enabled)
+    if (tw->terrain) {
+        glEnable(GL_CULL_FACE);
+        glm::mat4 reflectView;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &reflectView[0][0]);
+        glm::mat4 reflectProj;
+        glGetFloatv(GL_PROJECTION_MATRIX, &reflectProj[0][0]);
+        glm::mat4 invView = glm::inverse(reflectView);
+        glm::vec3 reflectCameraPos = glm::vec3(invView[3]);
+        glm::vec4 clipPlane(0.0f, 1.0f, 0.0f, -waterHeight);
+        tw->terrain->draw(reflectView, reflectProj, reflectCameraPos);
+        glDisable(GL_CULL_FACE);
+    }
+
     glEnable(GL_LIGHTING);
     setupObjects();
 
     // Draw all scene elements: track, train, oden, control points
     tw->drawStuff();
 
+    // Disable clip plane before restoring matrices/state
     glDisable(GL_CLIP_PLANE0);
+
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
@@ -647,10 +665,25 @@ void Water::renderRefraction(TrainView* tw) {
     glEnable(GL_LIGHTING);
     setupObjects();
 
+    // Draw terrain in refraction
+    // Draw terrain in refraction (respect clip plane — keep GL_CLIP_PLANE0 enabled)
+    if (tw->terrain) {
+        glm::mat4 refractView;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &refractView[0][0]);
+        glm::mat4 refractProj;
+        glGetFloatv(GL_PROJECTION_MATRIX, &refractProj[0][0]);
+        glm::mat4 invView = glm::inverse(refractView);
+        glm::vec3 refractCameraPos = glm::vec3(invView[3]);
+        glm::vec4 clipPlane(0.0f, -1.0f, 0.0f, waterHeight);
+        tw->terrain->draw(refractView, refractProj, refractCameraPos);
+    }
+
     // Draw all scene elements clipped below water: track, train, oden, control points
     tw->drawStuff();
 
+    // Disable clip plane before restoring matrices/state
     glDisable(GL_CLIP_PLANE0);
+
     glMatrixMode(GL_PROJECTION);
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
