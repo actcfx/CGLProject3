@@ -62,6 +62,7 @@ class ControlPoint;
 #include "Shaders/Water.hpp"
 #include "Stuffs/totemOfUndying.hpp"
 #include "RenderUtilities/Model.h"
+#include "Stuffs/ModelActors.hpp"
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -82,7 +83,6 @@ public:
     void drawTrack(bool doingShadows);
     void drawTrain(bool doingShadows);
     void drawOden(bool doingShadows);
-    void drawModels();
 
     // setup the projection - assuming that the projection stack has been
     // cleared for you
@@ -106,7 +106,8 @@ public:
     Water* water = nullptr;
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
-    Model* modelObject = nullptr;
+    Backpack* backpack = nullptr;
+    MinecraftChest* minecraftChest = nullptr;
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
@@ -135,7 +136,6 @@ private:
 
     // ---------- Shaders and Textures ----------
     Shader* shader = nullptr;
-    Shader* modelShader = nullptr;
     Texture2D* texture = nullptr;
     VAO* plane = nullptr;
     UBO* commonMatrices = nullptr;

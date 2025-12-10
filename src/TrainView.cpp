@@ -25,7 +25,6 @@ references)
 #include <algorithm>
 #include <chrono>
 #include <cmath>
-#include <cstdio>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -52,31 +51,6 @@ references)
 #define DIVIDE_LINE 250.0f  // reduced for performance; was 1000
 #define GUAGE 5.0f
 
-namespace {
-bool fileExists(const std::string& path) {
-    FILE* f = std::fopen(path.c_str(), "rb");
-    if (f) {
-        std::fclose(f);
-        return true;
-    }
-    return false;
-}
-
-std::string resolveAssetPath(const std::string& relative) {
-    if (fileExists(relative))
-        return relative;
-
-    const char* prefixes[] = { "./", "../", "../../", "../../../",
-                               "../../../../", "../../../../../" };
-    for (const char* prefix : prefixes) {
-        std::string candidate = std::string(prefix) + relative;
-        if (fileExists(candidate))
-            return candidate;
-    }
-    return relative;
-}
-}
-
 //************************************************************************
 //
 // * Constructor to set up the GL window
@@ -93,6 +67,8 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     water = new Water();
     skybox = new Skybox();
     totem = new TotemOfUndying();
+    backpack = new Backpack(this);
+    minecraftChest = new MinecraftChest(this);
 }
 
 //************************************************************************
@@ -713,8 +689,11 @@ void TrainView::draw() {
         mainFrameBuffer->bindTexture(0);
         mainFrameBuffer->drawQuad();
     }
-
-    this->drawModels();
+    
+    if (minecraftChest)
+        minecraftChest->draw(glm::vec3(0, 5, 0));
+    if (backpack)
+        backpack->draw(glm::vec3(0, 20, 0));
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1872,44 +1851,3 @@ void TrainView::doPick()
     printf("Selected Cube %d\n", selectedCube);
 }
 
-void TrainView::drawModels() {
-    if (!modelShader) {
-        modelShader = new Shader("./shaders/model.vert", nullptr, nullptr,
-                                 nullptr, "./shaders/model.frag");
-    }
-    if (!modelObject) {
-        const std::string assetPath =
-            resolveAssetPath("assets/backpack/backpack.obj");
-        modelObject = new Model(assetPath);
-    }
-
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, w(), h());
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
-
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    setProjection();
-
-    glm::mat4 projectionMatrix;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
-    glm::mat4 viewMatrix;
-    glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
-
-    glm::mat4 modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 5.0f, 0.0f));
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(5.0f));
-
-    glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
-
-    modelShader->Use();
-    GLint mvpLoc = glGetUniformLocation(modelShader->Program, "uMVP");
-    if (mvpLoc >= 0) {
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, &mvp[0][0]);
-    }
-
-    modelObject->Draw(*modelShader);
-
-    glUseProgram(0);
-}

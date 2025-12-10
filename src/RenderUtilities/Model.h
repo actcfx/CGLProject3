@@ -11,8 +11,10 @@
 #include <assimp/postprocess.h>
 #include <string>
 #include <vector>
-#include "RenderUtilities/Mesh.h"
-#include "RenderUtilities/Shader.h"
+#include <algorithm>
+#include <cstdio>
+#include "Mesh.h"
+#include "Shader.h"
 
 class Model 
 {
@@ -154,13 +156,14 @@ class Model
         unsigned int TextureFromFile(const char *path, const std::string &directory)
         {
             std::string filename = std::string(path);
-            filename = directory + '/' + filename;
+            std::replace(filename.begin(), filename.end(), '\\', '/');
+            std::string resolved = resolveTexturePath(directory, filename);
 
             unsigned int textureID;
             glGenTextures(1, &textureID);
 
             int width, height, nrComponents;
-            unsigned char *data = stbi_load(filename.c_str(), &width, &height, &nrComponents, 0);
+            unsigned char *data = stbi_load(resolved.c_str(), &width, &height, &nrComponents, 0);
             if (data)
             {
                 GLenum format;
@@ -184,11 +187,54 @@ class Model
             }
             else
             {
-                std::cout << "Texture failed to load at path: " << path << std::endl;
+                std::cout << "Texture failed to load at path: " << resolved << std::endl;
                 stbi_image_free(data);
             }
 
             return textureID;
+        }
+
+        static bool fileExists(const std::string& path)
+        {
+            FILE* f = std::fopen(path.c_str(), "rb");
+            if (f)
+            {
+                std::fclose(f);
+                return true;
+            }
+            return false;
+        }
+
+        static std::string resolveTexturePath(const std::string& directory, const std::string& relative)
+        {
+            if (relative.empty())
+                return directory;
+
+            std::string base = directory;
+            while (true)
+            {
+                std::string candidate = base.empty() ? relative : base + '/' + relative;
+                if (fileExists(candidate))
+                    return candidate;
+
+                if (base.empty())
+                    break;
+
+                size_t slashPos = base.find_last_of('/');
+                if (slashPos == std::string::npos)
+                {
+                    base.clear();
+                }
+                else
+                {
+                    base = base.substr(0, slashPos);
+                }
+            }
+
+            if (fileExists(relative))
+                return relative;
+
+            return directory + '/' + relative;
         }
 };
 
