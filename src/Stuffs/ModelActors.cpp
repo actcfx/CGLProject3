@@ -1,6 +1,7 @@
 #include "ModelActors.hpp"
 
 #include <glad/glad.h>
+#include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <cstdio>
 #include <string>
@@ -49,36 +50,75 @@ void ModelActor::ensureResources() {
     }
 }
 
-void ModelActor::drawInternal(const glm::vec3& position) {
+void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
+                              float smokeStart, float smokeEnd) {
     if (!owner)
         return;
 
     ensureResources();
 
-    glBindFramebuffer(GL_FRAMEBUFFER, 0);
-    glViewport(0, 0, owner->w(), owner->h());
-    glEnable(GL_DEPTH_TEST);
-    glDisable(GL_LIGHTING);
-
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    owner->setProjection();
-
-    glm::mat4 projectionMatrix;
-    glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
     glm::mat4 viewMatrix;
     glGetFloatv(GL_MODELVIEW_MATRIX, &viewMatrix[0][0]);
+    glm::mat4 projectionMatrix;
+    glGetFloatv(GL_PROJECTION_MATRIX, &projectionMatrix[0][0]);
 
-    glm::mat4 modelMatrix(1.0f);
-    modelMatrix = glm::translate(modelMatrix, position);
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(scale));
+    glm::mat4 scaledModel =
+        modelMatrix * glm::scale(glm::mat4(1.0f), glm::vec3(scale));
+    glm::mat3 normalMatrix =
+        glm::mat3(glm::transpose(glm::inverse(scaledModel)));
 
-    glm::mat4 mvp = projectionMatrix * viewMatrix * modelMatrix;
+    glm::vec3 cameraPos(0.0f);
+    if (!doingShadows) {
+        glm::mat4 invView = glm::inverse(viewMatrix);
+        cameraPos = glm::vec3(invView[3]);
+    }
+
+    float resolvedStart = smokeStart;
+    float resolvedEnd = smokeEnd;
+    if (owner && (resolvedStart < 0.0f || resolvedEnd <= resolvedStart)) {
+        resolvedStart = owner->getSmokeStart();
+        resolvedEnd = owner->getSmokeEnd();
+    }
+
+    glm::vec2 smokeParams(-1.0f, -1.0f);
+    if (resolvedEnd > resolvedStart && resolvedStart >= 0.0f) {
+        smokeParams = glm::vec2(resolvedStart, resolvedEnd);
+    }
 
     shader->Use();
-    const GLint mvpLoc = glGetUniformLocation(shader->Program, "uMVP");
-    if (mvpLoc >= 0) {
-        glUniformMatrix4fv(mvpLoc, 1, GL_FALSE, &mvp[0][0]);
+
+    auto setMat4 = [&](const char* name, const glm::mat4& mat) {
+        const GLint loc = glGetUniformLocation(shader->Program, name);
+        if (loc >= 0) {
+            glUniformMatrix4fv(loc, 1, GL_FALSE, &mat[0][0]);
+        }
+    };
+
+    auto setMat3 = [&](const char* name, const glm::mat3& mat) {
+        const GLint loc = glGetUniformLocation(shader->Program, name);
+        if (loc >= 0) {
+            glUniformMatrix3fv(loc, 1, GL_FALSE, &mat[0][0]);
+        }
+    };
+
+    setMat4("uModel", scaledModel);
+    setMat4("uView", viewMatrix);
+    setMat4("uProjection", projectionMatrix);
+    setMat3("uNormalMatrix", normalMatrix);
+
+    const GLint shadowLoc = glGetUniformLocation(shader->Program, "uShadowPass");
+    if (shadowLoc >= 0) {
+        glUniform1i(shadowLoc, doingShadows ? 1 : 0);
+    }
+
+    const GLint smokeLoc = glGetUniformLocation(shader->Program, "uSmokeParams");
+    if (smokeLoc >= 0) {
+        glUniform2fv(smokeLoc, 1, &smokeParams[0]);
+    }
+
+    const GLint camLoc = glGetUniformLocation(shader->Program, "uCameraPos");
+    if (camLoc >= 0) {
+        glUniform3fv(camLoc, 1, &cameraPos[0]);
     }
 
     model->Draw(*shader);

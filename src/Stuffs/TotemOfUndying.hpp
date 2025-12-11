@@ -143,7 +143,8 @@ public:
     }
 
     void draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix,
-              const glm::vec3& cameraPos) {
+              const glm::vec3& cameraPos, float smokeStart,
+              float smokeEnd) {
         if (!this->shader || !this->quad || !this->texture) {
             return;
         }
@@ -210,6 +211,17 @@ public:
         glUniformMatrix4fv(
             glGetUniformLocation(this->shader->Program, "u_projection"), 1,
             GL_FALSE, &projectionMatrix[0][0]);
+
+        const GLint camLoc =
+            glGetUniformLocation(this->shader->Program, "u_cameraPos");
+        if (camLoc >= 0) {
+            glUniform3fv(camLoc, 1, &cameraPos[0]);
+        }
+        const GLint smokeLoc =
+            glGetUniformLocation(this->shader->Program, "u_smokeParams");
+        if (smokeLoc >= 0) {
+            glUniform2f(smokeLoc, smokeStart, smokeEnd);
+        }
 
         // Bind texture
         this->texture->bind(0);

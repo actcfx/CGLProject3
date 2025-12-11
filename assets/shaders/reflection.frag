@@ -19,6 +19,7 @@ uniform float u_distortionStrength;
 uniform float u_normalStrength;
 uniform float u_reflectRefractRatio;
 uniform vec3 u_waterColor;
+uniform vec2 u_smokeParams;
 
 // Procedural normal waves for realistic water surface
 vec3 computeNormal()
@@ -89,6 +90,15 @@ void main()
 
     // Add water color for absorption effect
     combined = mix(combined, u_waterColor, 0.06 + depthFade * 0.2);
+
+    float smoke = 0.0;
+    if (u_smokeParams.y > u_smokeParams.x && u_smokeParams.x >= 0.0) {
+        float dist = length(u_cameraPos - vWorldPos);
+        smoke = clamp((dist - u_smokeParams.x) /
+                          max(u_smokeParams.y - u_smokeParams.x, 0.0001),
+                      0.0, 1.0);
+    }
+    combined = mix(combined, vec3(1.0), smoke);
 
     // Blend transparency based on fresnel for realistic appearance
     float alpha = mix(0.75, 0.92, fresnel);

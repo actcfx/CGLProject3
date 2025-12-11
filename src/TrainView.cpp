@@ -268,6 +268,13 @@ void TrainView::setLighting() {
             glDisable(GL_LIGHT2);
         }
     }
+
+    GLfloat fogColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glEnable(GL_FOG);
+    glFogfv(GL_FOG_COLOR, fogColor);
+    glFogi(GL_FOG_MODE, GL_LINEAR);
+    glFogf(GL_FOG_START, smokeStartDistance);
+    glFogf(GL_FOG_END, smokeEndDistance);
 }
 
 void TrainView::setUBO() {
@@ -421,6 +428,12 @@ void TrainView::drawPlane() {
     glm::vec3 cameraPos = glm::vec3(invView[3]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_cameraPos"), 1,
                  &cameraPos[0]);
+
+    GLint smokeLoc =
+        glGetUniformLocation(this->shader->Program, "u_smokeParams");
+    if (smokeLoc >= 0) {
+        glUniform2f(smokeLoc, smokeStartDistance, smokeEndDistance);
+    }
 
     // Bind skybox for reflection
     if (skybox && skybox->getTexture() != 0) {
@@ -615,7 +628,8 @@ void TrainView::draw() {
     glm::mat4 invView = glm::inverse(totemViewMatrix);
     glm::vec3 totemCameraPos = glm::vec3(invView[3]);
 
-    totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
+    totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos,
+                smokeStartDistance, smokeEndDistance);
 
     // ---------- Draw the plane ----------
     drawPlane();
@@ -690,10 +704,10 @@ void TrainView::draw() {
         mainFrameBuffer->drawQuad();
     }
     
-    if (minecraftChest)
-        minecraftChest->draw(glm::vec3(0, 5, 0));
     if (backpack)
-        backpack->draw(glm::vec3(0, 20, 0));
+        backpack->draw(glm::vec3(0, 20 + displace, 0));
+
+    displace++;
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1528,108 +1542,20 @@ void TrainView::drawTrain(bool doingShadows) {
     trainForward = tangent;
     trainUp = up;
 
-    if (!tw->trainCam->value()) {
-        const float halfExtent = 5.0f;
-        Pnt3f halfForward = tangent * halfExtent;
-        Pnt3f halfRight = right * halfExtent;
-        Pnt3f halfUp = up * halfExtent;
+    if (!tw->trainCam->value() && minecraftChest) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
 
-        Pnt3f center = position + halfUp;
+        const float heightOffset = 4.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
 
-        Pnt3f frontTopRight = center + halfForward + halfRight + halfUp;
-        Pnt3f frontTopLeft = center + halfForward - halfRight + halfUp;
-        Pnt3f frontBottomRight = center + halfForward + halfRight - halfUp;
-        Pnt3f frontBottomLeft = center + halfForward - halfRight - halfUp;
-        Pnt3f backTopRight = center - halfForward + halfRight + halfUp;
-        Pnt3f backTopLeft = center - halfForward - halfRight + halfUp;
-        Pnt3f backBottomRight = center - halfForward + halfRight - halfUp;
-        Pnt3f backBottomLeft = center - halfForward - halfRight - halfUp;
+        glm::mat4 modelMatrix(1.0f);
+        modelMatrix[0] = glm::vec4(toGlm(right), 0.0f);
+        modelMatrix[1] = glm::vec4(toGlm(up), 0.0f);
+        modelMatrix[2] = glm::vec4(toGlm(tangent), 0.0f);
+        modelMatrix[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
-        if (!doingShadows) {
-            // set train color
-            // glColor3ub(200, 40, 40);
-            glColor3ub(255, 255, 255);
-        }
-
-        glBegin(GL_QUADS);
-        // Front face
-        if (!doingShadows) {
-            glColor3ub(89, 110, 57);
-        }  // front face colored
-        glNormal3f(tangent.x, tangent.y, tangent.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-
-        // Back face
-        if (!doingShadows) {
-            glColor3ub(255, 255, 255);
-        }  // other faces default
-        glNormal3f(-tangent.x, -tangent.y, -tangent.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-
-        // Left face
-        if (!doingShadows) {
-            glColor3ub(255, 255, 255);
-        }
-        glNormal3f(-right.x, -right.y, -right.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-
-        // Right face
-        if (!doingShadows) {
-            glColor3ub(255, 255, 255);
-        }
-        glNormal3f(right.x, right.y, right.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-
-        // Top face
-        glNormal3f(up.x, up.y, up.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
-
-        // Bottom face
-        glNormal3f(-up.x, -up.y, -up.z);
-        glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
-        glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
-        glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
-        glTexCoord2f(0.0f, 1.0f);
-        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
-        glEnd();
+        minecraftChest->draw(modelMatrix, doingShadows, smokeStartDistance,
+                             smokeEndDistance);
     }
 }
 

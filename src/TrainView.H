@@ -95,6 +95,7 @@ public:
     void doPick();
 
 public:
+    int displace = 0;
     ArcBallCam arcball;  // keep an ArcBall for the UI
     int selectedCube{};  // simple - just remember which cube is selected
 
@@ -108,6 +109,9 @@ public:
     TotemOfUndying* totem = nullptr;
     Backpack* backpack = nullptr;
     MinecraftChest* minecraftChest = nullptr;
+
+    float getSmokeStart() const { return smokeStartDistance; }
+    float getSmokeEnd() const { return smokeEndDistance; }
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
@@ -154,4 +158,7 @@ private:
     Shader* toonShader = nullptr;
 
     void initFrameBufferShader();
+
+    float smokeStartDistance = 120.0f;
+    float smokeEndDistance = 500.0f;
 };
