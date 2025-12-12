@@ -131,13 +131,13 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
 }
 
 McChest::McChest(TrainView* owner)
-    : ModelActor(owner, "./assets/models/mcChest/model/Obj/chest.obj", 5.0f) {}
-
-Backpack::Backpack(TrainView* owner)
-    : ModelActor(owner, "./assets/models/backpack/backpack.obj", 5.0f) {}
+    : ModelActor(owner, "./assets/models/minecraftChest/model/Obj/chest.obj", 5.0f) {}
 
 McMinecart::McMinecart(TrainView* owner)
-    : ModelActor(owner, "./assets/models/mcminecart/scene.gltf", 10.0f) {}
+    : ModelActor(owner, "./assets/models/minecraftMinecart/scene.gltf", 10.0f) {}
 
 McFox::McFox(TrainView* owner)
-    : ModelActor(owner, "./assets/models/mcFox/Fox.fbx", 0.03f) {}
+    : ModelActor(owner, "./assets/models/minecraftFox/Fox.fbx", 0.03f) {}
+
+McVillager::McVillager(TrainView* owner)
+    : ModelActor(owner, "./assets/models/minecraftVillager/source/villager.fbx", 0.7f) {}

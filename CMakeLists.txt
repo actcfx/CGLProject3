@@ -40,8 +40,9 @@ add_executable(RollerCoasters
     ${SRC_DIR}Shaders/Water.hpp
     ${SRC_DIR}Shaders/Water.cpp
     ${SRC_DIR}Stuffs/TotemOfUndying.hpp
+    ${SRC_DIR}Stuffs/Terrain.hpp
     ${SRC_DIR}Stuffs/ModelActors.hpp
-    ${SRC_DIR}Stuffs/ModelActors.cpp)
+    ${SRC_DIR}Stuffs/ModelActors.cpp
     ${SRC_DIR}Stuffs/Terrain.hpp)
 
 add_library(Utilities

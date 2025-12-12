@@ -110,10 +110,10 @@ public:
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
     Terrain* terrain = nullptr;
-    Backpack* backpack = nullptr;
     McChest* mcChest = nullptr;
     McMinecart* mcMinecart = nullptr;
     McFox* mcFox = nullptr;
+    McVillager* mcVillager = nullptr;
 
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }
@@ -128,6 +128,9 @@ private:
     Pnt3f trainPosition;
     Pnt3f trainForward;
     Pnt3f trainUp;
+
+    float wheelAngle = 0.0f;
+    bool wheelParamInitialized = false;
 
     // ---------- Arc Length ----------
     struct ArcLengthTable {

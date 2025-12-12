@@ -281,7 +281,7 @@ void TrainWindow::advanceTrain(float dir)
 
         const float signedSlope = forward.y * directionSign;
         const float gravityGain = 0.12f;
-        const float damping = 0.08f;
+        const float damping = 0.05f;
         const float minScale = 0.1f;
         const float maxScale = 6.0f;
 

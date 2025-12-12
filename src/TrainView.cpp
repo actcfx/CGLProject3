@@ -68,10 +68,10 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     skybox = new Skybox();
     totem = new TotemOfUndying();
     terrain = new Terrain();
-    backpack = new Backpack(this);
     mcChest = new McChest(this);
     mcMinecart = new McMinecart(this);
     mcFox = new McFox(this);
+    mcVillager = new McVillager(this);
 }
 
 //************************************************************************
@@ -660,12 +660,13 @@ void TrainView::draw() {
     // ---------- Draw the plane ----------
     drawPlane();
 
-    if (backpack)
-        backpack->draw(glm::vec3(20, 10, 20));
+    // ---------- Draw Minecraft Models ----------
     if (mcChest)
         mcChest->draw(glm::vec3(0, 5, 0));
     if (mcFox)
         mcFox->draw(glm::vec3(-20, 5, -20));
+    if (mcVillager)
+        mcVillager->draw(glm::vec3(20, 5, 20));
     
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
@@ -1381,6 +1382,9 @@ void TrainView::drawTrain(bool doingShadows) {
         return;
     }
 
+    const bool useMinecraftTrain =
+        tw->minecraftButton && tw->minecraftButton->value();
+
     float rawParam = m_pTrack->trainU;
     if (rawParam < 0.0f) {
         rawParam = std::fmod(rawParam, static_cast<float>(pointCount)) +
@@ -1690,12 +1694,215 @@ void TrainView::drawTrain(bool doingShadows) {
         }
     }
 
+    const float wheelRadius = 3.25f;
+    const float wheelWidth = 2.0f;
+    const float twoPi = 2.0f * static_cast<float>(M_PI);
+    const float bodyLift = 5.0f;
+    const float wheelBodyGap = -2.0f;
+
+    Pnt3f previousTrainPosition = trainPosition;
+    float distanceMoved = 0.0f;
+    if (wheelParamInitialized) {
+        Pnt3f delta = position - previousTrainPosition;
+        distanceMoved =
+            std::sqrt(delta.x * delta.x + delta.y * delta.y +
+                      delta.z * delta.z);
+    } else {
+        wheelParamInitialized = true;
+    }
+
+    if (distanceMoved > 1e-4f && wheelRadius > 1e-4f) {
+        // Subtract to reverse visual rotation direction
+        wheelAngle -= distanceMoved / wheelRadius;
+        if (wheelAngle > twoPi || wheelAngle < -twoPi) {
+            wheelAngle = std::fmod(wheelAngle, twoPi);
+        }
+    }
+
+    const float halfExtent = 5.0f;
+    Pnt3f halfUp = up * halfExtent;
+    Pnt3f center = position + halfUp + up * bodyLift;
+
+    Pnt3f updatedTrainPosition = position;
+    if (!useMinecraftTrain) {
+        updatedTrainPosition = center;
+    }
+
+    if (!useMinecraftTrain && !tw->trainCam->value()) {
+        Pnt3f halfForward = tangent * halfExtent;
+        Pnt3f halfRight = right * halfExtent;
+
+        Pnt3f frontTopRight = center + halfForward + halfRight + halfUp;
+        Pnt3f frontTopLeft = center + halfForward - halfRight + halfUp;
+        Pnt3f frontBottomRight = center + halfForward + halfRight - halfUp;
+        Pnt3f frontBottomLeft = center + halfForward - halfRight - halfUp;
+        Pnt3f backTopRight = center - halfForward + halfRight + halfUp;
+        Pnt3f backTopLeft = center - halfForward - halfRight + halfUp;
+        Pnt3f backBottomRight = center - halfForward + halfRight - halfUp;
+        Pnt3f backBottomLeft = center - halfForward - halfRight - halfUp;
+
+        if (!doingShadows) {
+            glColor3ub(255, 255, 255);
+        }
+
+        glBegin(GL_QUADS);
+        // Front face
+        if (!doingShadows) {
+            glColor3ub(89, 110, 57);
+        }
+        glNormal3f(tangent.x, tangent.y, tangent.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+
+        // Back face
+        if (!doingShadows) {
+            glColor3ub(255, 255, 255);
+        }
+        glNormal3f(-tangent.x, -tangent.y, -tangent.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+
+        // Left face
+        glNormal3f(-right.x, -right.y, -right.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+
+        // Right face
+        glNormal3f(right.x, right.y, right.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+
+        // Top face
+        glNormal3f(up.x, up.y, up.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(frontTopLeft.x, frontTopLeft.y, frontTopLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
+
+        // Bottom face
+        glNormal3f(-up.x, -up.y, -up.z);
+        glTexCoord2f(0.0f, 0.0f);
+        glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
+        glTexCoord2f(1.0f, 0.0f);
+        glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
+        glTexCoord2f(1.0f, 1.0f);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
+        glTexCoord2f(0.0f, 1.0f);
+        glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
+        glEnd();
+
+        const float axleInnerOffset = -1.5f; // negative moves wheels closer to center
+        const float axleInset = halfExtent + wheelWidth * 0.5f + axleInnerOffset;
+        Pnt3f bodyBottom = center - halfUp;
+        Pnt3f axleCenter = bodyBottom - up * (wheelRadius + wheelBodyGap);
+        const int rimSlices = 48;
+        const int sectorSlices = 24;
+        const float halfWheelWidth = wheelWidth * 0.5f;
+
+        auto drawWheel = [&](const Pnt3f& center) {
+            if (!doingShadows) {
+                glColor3ub(45, 45, 45);
+            }
+
+            glBegin(GL_QUAD_STRIP);
+            for (int i = 0; i <= rimSlices; ++i) {
+                float theta = (static_cast<float>(i) / rimSlices) * twoPi;
+                float angle = theta + wheelAngle;
+                float c = std::cos(angle);
+                float s = std::sin(angle);
+                Pnt3f radial = (up * c + tangent * s) * wheelRadius;
+                Pnt3f normal = radial;
+                normal.normalize();
+
+                Pnt3f outer = center + radial + right * halfWheelWidth;
+                Pnt3f inner = center + radial - right * halfWheelWidth;
+
+                glNormal3f(normal.x, normal.y, normal.z);
+                glVertex3f(outer.x, outer.y, outer.z);
+                glVertex3f(inner.x, inner.y, inner.z);
+            }
+            glEnd();
+
+            auto drawCap = [&](float sign) {
+                Pnt3f capCenter = center + right * (sign * halfWheelWidth);
+                Pnt3f capNormal = right * sign;
+
+                glBegin(GL_TRIANGLES);
+                for (int i = 0; i < sectorSlices; ++i) {
+                    float theta0 =
+                        (static_cast<float>(i) / sectorSlices) * twoPi +
+                        wheelAngle;
+                    float theta1 = (static_cast<float>(i + 1) / sectorSlices) *
+                                       twoPi + wheelAngle;
+
+                    Pnt3f rim0 = capCenter +
+                                 (up * std::cos(theta0) +
+                                  tangent * std::sin(theta0)) * wheelRadius;
+                    Pnt3f rim1 = capCenter +
+                                 (up * std::cos(theta1) +
+                                  tangent * std::sin(theta1)) * wheelRadius;
+
+                    if (!doingShadows) {
+                        if (i % 2 == 0) {
+                            glColor3ub(70, 140, 255);
+                        } else {
+                            glColor3ub(255, 80, 95);
+                        }
+                    }
+
+                    glNormal3f(capNormal.x, capNormal.y, capNormal.z);
+                    glVertex3f(capCenter.x, capCenter.y, capCenter.z);
+                    glVertex3f(rim0.x, rim0.y, rim0.z);
+                    glVertex3f(rim1.x, rim1.y, rim1.z);
+                }
+                glEnd();
+            };
+
+            drawCap(1.0f);
+            drawCap(-1.0f);
+        };
+
+        drawWheel(axleCenter + right * axleInset);
+        drawWheel(axleCenter - right * axleInset);
+    }
+
     // Update train state
-    trainPosition = position;
+    trainPosition = updatedTrainPosition;
     trainForward = tangent;
     trainUp = up;
-
-    if (!tw->trainCam->value() && mcMinecart) {
+    
+    if (useMinecraftTrain && !tw->trainCam->value() && mcMinecart && mcVillager) {
         auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
 
         const float heightOffset = 2.0f;
@@ -1710,8 +1917,13 @@ void TrainView::drawTrain(bool doingShadows) {
         const glm::mat4 assetFix =
             glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
                         glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 modelMatrix = basis * assetFix;
 
+        glm::mat4 modelMatrix = basis * assetFix;
+        glm::mat4 villagerOffset =
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 20.0f, 0.0f));
+            
+        // mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
+        //                 smokeEndDistance);
         mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
                          smokeEndDistance);
     }
