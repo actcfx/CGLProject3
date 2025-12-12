@@ -109,6 +109,7 @@ public:
     TotemOfUndying* totem = nullptr;
     Backpack* backpack = nullptr;
     MinecraftChest* minecraftChest = nullptr;
+    MCMinecart* mcMinecart = nullptr;
 
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }

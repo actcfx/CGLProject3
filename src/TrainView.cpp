@@ -69,6 +69,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     totem = new TotemOfUndying();
     backpack = new Backpack(this);
     minecraftChest = new MinecraftChest(this);
+    mcMinecart = new MCMinecart(this);
 }
 
 //************************************************************************
@@ -706,6 +707,8 @@ void TrainView::draw() {
     
     if (backpack)
         backpack->draw(glm::vec3(0, 20 + displace, 0));
+    if (mcMinecart)
+        mcMinecart->draw(glm::vec3(10, 20, 0));
 
     displace++;
 

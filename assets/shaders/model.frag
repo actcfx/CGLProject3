@@ -23,6 +23,10 @@ void main() {
 
     vec4 baseColor = texture(material.texture_diffuse1, vTexCoord);
 
+    // Clip texels that should be masked out (matches glTF alphaCutoff=0.05).
+    if (baseColor.a < 0.05)
+        discard;
+
     float smoke = 0.0;
     if (uSmokeParams.y > uSmokeParams.x && uSmokeParams.x >= 0.0) {
         float dist = length(uCameraPos - vWorldPos);

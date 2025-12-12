@@ -6,6 +6,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <string>
 #include <vector>
+#include <utility>
 
 #include "Shader.h"
 
@@ -40,11 +41,14 @@ class Mesh {
         std::vector<Vertex>       vertices;
         std::vector<unsigned int> indices;
         std::vector<Texture>      textures;
+        bool doubleSided = false;
 
-        Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices, std::vector<Texture> textures) {
-            this->vertices = vertices;
-            this->indices = indices;
-            this->textures = textures;
+        Mesh(std::vector<Vertex> vertices, std::vector<unsigned int> indices,
+             std::vector<Texture> textures, bool doubleSided = false) {
+            this->vertices = std::move(vertices);
+            this->indices = std::move(indices);
+            this->textures = std::move(textures);
+            this->doubleSided = doubleSided;
 
             setupMesh();
         }   
@@ -67,10 +71,19 @@ class Mesh {
             }
             glActiveTexture(GL_TEXTURE0);
 
+            GLboolean wasCullEnabled = glIsEnabled(GL_CULL_FACE);
+            if (doubleSided && wasCullEnabled) {
+                glDisable(GL_CULL_FACE);
+            }
+
             // draw mesh
             glBindVertexArray(VAO);
             glDrawElements(GL_TRIANGLES, indices.size(), GL_UNSIGNED_INT, 0);
             glBindVertexArray(0);
+
+            if (doubleSided && wasCullEnabled) {
+                glEnable(GL_CULL_FACE);
+            }
         }  
     private:
         //  render data

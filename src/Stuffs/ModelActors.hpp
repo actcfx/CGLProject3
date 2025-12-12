@@ -55,3 +55,14 @@ public:
         drawInternal(model, false);
     }
 };
+
+class MCMinecart : public ModelActor {
+public:
+    explicit MCMinecart(TrainView* owner);
+
+    void draw(const glm::vec3& position) {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, position);
+        drawInternal(model, false);
+    }
+};

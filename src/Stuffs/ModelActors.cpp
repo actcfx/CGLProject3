@@ -121,6 +121,10 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
         glUniform3fv(camLoc, 1, &cameraPos[0]);
     }
 
+    GLboolean wasCullEnabled = glIsEnabled(GL_CULL_FACE);
+    glDisable(GL_CULL_FACE);
+    model->Draw(*shader);
+    if (wasCullEnabled) glEnable(GL_CULL_FACE);
     model->Draw(*shader);
 
     glUseProgram(0);
@@ -132,3 +136,6 @@ MinecraftChest::MinecraftChest(TrainView* owner)
 
 Backpack::Backpack(TrainView* owner)
     : ModelActor(owner, "./assets/models/backpack/backpack.obj", 5.0f) {}
+
+MCMinecart::MCMinecart(TrainView* owner)
+    : ModelActor(owner, "./assets/models/minecraft minecart/scene.gltf", 10.0f) {}
