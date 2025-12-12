@@ -108,8 +108,9 @@ public:
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
     Backpack* backpack = nullptr;
-    MinecraftChest* minecraftChest = nullptr;
-    MCMinecart* mcMinecart = nullptr;
+    McChest* mcChest = nullptr;
+    McMinecart* mcMinecart = nullptr;
+    McFox* mcFox = nullptr;
 
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }

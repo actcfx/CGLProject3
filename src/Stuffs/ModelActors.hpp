@@ -29,14 +29,9 @@ protected:
     float scale = 1.0f;
 };
 
-class MinecraftChest : public ModelActor {
+class McChest : public ModelActor {
 public:
-    explicit MinecraftChest(TrainView* owner);
-
-    void draw(const glm::mat4& modelMatrix, bool doingShadows,
-              float smokeStart, float smokeEnd) {
-        drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
-    }
+    explicit McChest(TrainView* owner);
 
     void draw(const glm::vec3& position) {
         glm::mat4 model(1.0f);
@@ -56,13 +51,30 @@ public:
     }
 };
 
-class MCMinecart : public ModelActor {
+class McMinecart : public ModelActor {
 public:
-    explicit MCMinecart(TrainView* owner);
+    explicit McMinecart(TrainView* owner);
 
     void draw(const glm::vec3& position) {
         glm::mat4 model(1.0f);
         model = glm::translate(model, position);
+        drawInternal(model, false);
+    }
+
+    void draw(const glm::mat4& modelMatrix, bool doingShadows,
+              float smokeStart, float smokeEnd) {
+        drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
+    }
+};
+
+class McFox : public ModelActor {
+public:
+    explicit McFox(TrainView* owner);
+
+    void draw(const glm::vec3& position) {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, position);
+        model = glm::rotate(model, glm::radians(180.0f), glm::vec3(0, 1, 0));
         drawInternal(model, false);
     }
 };

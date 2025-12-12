@@ -68,8 +68,9 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     skybox = new Skybox();
     totem = new TotemOfUndying();
     backpack = new Backpack(this);
-    minecraftChest = new MinecraftChest(this);
-    mcMinecart = new MCMinecart(this);
+    mcChest = new McChest(this);
+    mcMinecart = new McMinecart(this);
+    mcFox = new McFox(this);
 }
 
 //************************************************************************
@@ -636,10 +637,11 @@ void TrainView::draw() {
     drawPlane();
 
     if (backpack)
-        backpack->draw(glm::vec3(0, 20 + displace, 0));
-    if (mcMinecart)
-        mcMinecart->draw(glm::vec3(10, 20, 0));
-    displace++;
+        backpack->draw(glm::vec3(20, 10, 20));
+    if (mcChest)
+        mcChest->draw(glm::vec3(0, 5, 0));
+    if (mcFox)
+        mcFox->draw(glm::vec3(-20, 5, -20));
     
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
@@ -1545,20 +1547,25 @@ void TrainView::drawTrain(bool doingShadows) {
     trainForward = tangent;
     trainUp = up;
 
-    if (!tw->trainCam->value() && minecraftChest) {
+    if (!tw->trainCam->value() && mcMinecart) {
         auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
 
-        const float heightOffset = 4.0f;
+        const float heightOffset = 2.0f;
         Pnt3f raisedPosition = position + up * heightOffset;
 
-        glm::mat4 modelMatrix(1.0f);
-        modelMatrix[0] = glm::vec4(toGlm(right), 0.0f);
-        modelMatrix[1] = glm::vec4(toGlm(up), 0.0f);
-        modelMatrix[2] = glm::vec4(toGlm(tangent), 0.0f);
-        modelMatrix[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
-        minecraftChest->draw(modelMatrix, doingShadows, smokeStartDistance,
-                             smokeEndDistance);
+        const glm::mat4 assetFix =
+            glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
+                        glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 modelMatrix = basis * assetFix;
+
+        mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
+                         smokeEndDistance);
     }
 }
 
