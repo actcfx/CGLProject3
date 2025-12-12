@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "../TrainView.H"
+#include "../TrainWindow.H"
 #include "../RenderUtilities/BufferObject.h"
 #include "../RenderUtilities/Shader.h"
 #include "../RenderUtilities/Texture.h"
@@ -42,13 +44,18 @@ public:
     Texture2D* texture = nullptr;
     Shader* shader = nullptr;
     UBO* commonMatrices = nullptr;
+    TrainView* owner = nullptr;
 
     TotemOfUndying() {}
 
     ~TotemOfUndying() { cleanup(); }
 
-    void init() {
+    void init(TrainView* owner) {
         cleanup();
+
+        if(!this->owner) {
+            this->owner = owner;
+        }
 
         // Initialize shader (use custom totem shader for better alpha handling)
         if (!this->shader) {
@@ -221,6 +228,11 @@ public:
             glGetUniformLocation(this->shader->Program, "u_smokeParams");
         if (smokeLoc >= 0) {
             glUniform2f(smokeLoc, smokeStart, smokeEnd);
+        }
+        const GLint smokeEnabledLoc =
+        glGetUniformLocation(shader->Program, "smokeEnabled");
+        if (smokeEnabledLoc >= 0 && owner && owner->tw && owner->tw->smokeButton) {
+            glUniform1i(smokeEnabledLoc, owner->tw->smokeButton->value() ? 1 : 0);
         }
 
         // Bind texture

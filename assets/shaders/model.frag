@@ -14,6 +14,7 @@ uniform Material material;
 uniform vec3 uCameraPos;
 uniform vec2 uSmokeParams;
 uniform int uShadowPass;
+uniform bool smokeEnabled;
 
 void main() {
     if (uShadowPass == 1) {
@@ -35,6 +36,7 @@ void main() {
                       0.0, 1.0);
     }
 
+    if (!smokeEnabled) smoke = 0.0;
     vec3 finalColor = mix(baseColor.rgb, vec3(1.0), smoke);
     FragColor = vec4(finalColor, baseColor.a);
 }

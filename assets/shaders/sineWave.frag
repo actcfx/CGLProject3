@@ -11,6 +11,7 @@ uniform float shininess = 50.0f;
 uniform vec3 light_position = vec3(50.0f, 32.0f, 560.0f);
 uniform vec3 u_cameraPos;
 uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 
 void main(void){
     vec3 light_direction = normalize(light_position - vs_worldpos);
@@ -29,6 +30,8 @@ void main(void){
                           max(u_smokeParams.y - u_smokeParams.x, 0.0001),
                       0.0, 1.0);
     }
+
+    if (!smokeEnabled) smoke = 0.0;
     out_color.rgb = mix(out_color.rgb, vec3(1.0), smoke);
 
     out_color.a = 0.8; // Make it slightly transparent

@@ -184,8 +184,11 @@ TrainWindow::TrainWindow(const int x, const int y)
         pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
         togglify(pixelizeButton, 0);
 
-        toonButton = new Fl_Button(675, pty, 60, 20, "Toon");
+        toonButton = new Fl_Button(670, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
+
+        smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
+        togglify(smokeButton, 0);
 
         pty += 30;
 
@@ -198,8 +201,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         togglify(minecraftButton, 1);
 
         pty += 30;
-
-        // ---------- Reflection/Refraction Ratio Slider ----------
+// ---------- Reflection/Refraction Ratio Slider ----------
         reflectRefractSlider =
             new Fl_Value_Slider(700, pty, 95, 20, "Reflect/Refract");
         reflectRefractSlider->range(0.0, 1.0);
@@ -281,7 +283,7 @@ void TrainWindow::advanceTrain(float dir)
 
         const float signedSlope = forward.y * directionSign;
         const float gravityGain = 0.12f;
-        const float damping = 0.05f;
+        const float damping = 0.08f;
         const float minScale = 0.1f;
         const float maxScale = 6.0f;
 

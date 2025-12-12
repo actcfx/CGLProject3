@@ -16,6 +16,7 @@ uniform vec2 u_smokeParams;
 uniform sampler2D u_texture;
 uniform float u_time;
 uniform vec2 u_scroll;
+uniform bool smokeEnabled;
 
 void main(void){
     vec3 light_direction = normalize(light_position - vs_worldpos);
@@ -43,6 +44,8 @@ void main(void){
                           max(u_smokeParams.y - u_smokeParams.x, 0.0001),
                       0.0, 1.0);
     }
+
+    if (!smokeEnabled) smoke = 0.0;
     out_color.rgb = mix(out_color.rgb, vec3(1.0), smoke);
 
     out_color.a = 0.8;

@@ -39,6 +39,7 @@ references)
 #include "TrainView.H"
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
+#include "Stuffs/totemOfUndying.hpp"
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -285,12 +286,16 @@ void TrainView::setLighting() {
         }
     }
 
-    GLfloat fogColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
-    glEnable(GL_FOG);
-    glFogfv(GL_FOG_COLOR, fogColor);
-    glFogi(GL_FOG_MODE, GL_LINEAR);
-    glFogf(GL_FOG_START, smokeStartDistance);
-    glFogf(GL_FOG_END, smokeEndDistance);
+    if (tw->smokeButton->value()) {
+        GLfloat fogColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        glEnable(GL_FOG);
+        glFogfv(GL_FOG_COLOR, fogColor);
+        glFogi(GL_FOG_MODE, GL_LINEAR);
+        glFogf(GL_FOG_START, smokeStartDistance);
+        glFogf(GL_FOG_END, smokeEndDistance);
+    }else {
+        glDisable(GL_FOG);
+    }
 }
 
 void TrainView::setUBO() {
@@ -464,6 +469,12 @@ void TrainView::drawPlane() {
         glUniform2f(smokeLoc, smokeStartDistance, smokeEndDistance);
     }
 
+    GLint smokeEnabledLoc =
+        glGetUniformLocation(this->shader->Program, "smokeEnabled");
+    if (smokeEnabledLoc >= 0 && tw && tw->smokeButton) {
+        glUniform1i(smokeEnabledLoc, tw->smokeButton->value() ? 1 : 0);
+    }
+
     // Bind skybox for reflection
     if (skybox && skybox->getTexture() != 0) {
         glActiveTexture(GL_TEXTURE5);
@@ -502,7 +513,7 @@ void TrainView::draw() {
         }
         // Initialize Skybox once
         skybox->init();
-        totem->init();
+        totem->init(this);
         terrain->init(tw);
         glInited = true;
     }
@@ -662,11 +673,9 @@ void TrainView::draw() {
 
     // ---------- Draw Minecraft Models ----------
     if (mcChest)
-        mcChest->draw(glm::vec3(0, 5, 0));
+        mcChest->draw(glm::vec3(0, -10, 0));
     if (mcFox)
-        mcFox->draw(glm::vec3(-20, 5, -20));
-    if (mcVillager)
-        mcVillager->draw(glm::vec3(20, 5, 20));
+        mcFox->draw(glm::vec3(-20, -10, -20));
     
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
@@ -1920,10 +1929,10 @@ void TrainView::drawTrain(bool doingShadows) {
 
         glm::mat4 modelMatrix = basis * assetFix;
         glm::mat4 villagerOffset =
-            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 20.0f, 0.0f));
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
             
-        // mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
-        //                 smokeEndDistance);
+        mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
         mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
                          smokeEndDistance);
     }

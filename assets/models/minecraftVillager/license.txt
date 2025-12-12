@@ -1,0 +1,11 @@
+Model Information:
+* title:	Minecraft Villager (Animatable)
+* source:	https://sketchfab.com/3d-models/minecraft-villager-animatable-b5242b994b834363b6beec505eee7b16
+* author:	BlazingWildFire (https://sketchfab.com/BlazingWildFire)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Minecraft Villager (Animatable)" (https://sketchfab.com/3d-models/minecraft-villager-animatable-b5242b994b834363b6beec505eee7b16) by BlazingWildFire (https://sketchfab.com/BlazingWildFire) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

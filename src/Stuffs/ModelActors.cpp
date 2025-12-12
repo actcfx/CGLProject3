@@ -116,6 +116,12 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
         glUniform2fv(smokeLoc, 1, &smokeParams[0]);
     }
 
+    const GLint smokeEnabledLoc =
+        glGetUniformLocation(shader->Program, "smokeEnabled");
+    if (smokeEnabledLoc >= 0 && owner && owner->tw && owner->tw->smokeButton) {
+        glUniform1i(smokeEnabledLoc, owner->tw->smokeButton->value() ? 1 : 0);
+    }
+
     const GLint camLoc = glGetUniformLocation(shader->Program, "uCameraPos");
     if (camLoc >= 0) {
         glUniform3fv(camLoc, 1, &cameraPos[0]);
@@ -140,4 +146,4 @@ McFox::McFox(TrainView* owner)
     : ModelActor(owner, "./assets/models/minecraftFox/Fox.fbx", 0.03f) {}
 
 McVillager::McVillager(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftVillager/source/villager.fbx", 0.7f) {}
+    : ModelActor(owner, "./assets/models/minecraftVillager/scene.gltf", 1.0f) {}

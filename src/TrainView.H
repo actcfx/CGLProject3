@@ -61,9 +61,10 @@ class ControlPoint;
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
 #include "Stuffs/Terrain.hpp"
-#include "Stuffs/totemOfUndying.hpp"
 #include "RenderUtilities/Model.h"
 #include "Stuffs/ModelActors.hpp"
+
+class TotemOfUndying;
 
 
 class TrainView : public Fl_Gl_Window {

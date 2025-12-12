@@ -20,6 +20,7 @@ uniform float u_normalStrength;
 uniform float u_reflectRefractRatio;
 uniform vec3 u_waterColor;
 uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 
 // Procedural normal waves for realistic water surface
 vec3 computeNormal()
@@ -98,6 +99,8 @@ void main()
                           max(u_smokeParams.y - u_smokeParams.x, 0.0001),
                       0.0, 1.0);
     }
+
+    if (!smokeEnabled) smoke = 0.0;
     combined = mix(combined, vec3(1.0), smoke);
 
     // Blend transparency based on fresnel for realistic appearance

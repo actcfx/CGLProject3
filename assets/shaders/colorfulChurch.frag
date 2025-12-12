@@ -14,6 +14,7 @@ uniform vec3 u_color;
 uniform sampler2D u_texture;
 uniform vec3 u_cameraPos;
 uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 
 void main()
 {
@@ -28,6 +29,7 @@ void main()
                       0.0, 1.0);
     }
 
+    if (!smokeEnabled) smoke = 0.0;
     vec3 finalColor = mix(baseColor, vec3(1.0), smoke);
     f_color = vec4(finalColor, 1.0f);
 }

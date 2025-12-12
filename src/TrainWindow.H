@@ -108,6 +108,8 @@ public:
 
     Fl_Button* minecraftButton;
 
+    Fl_Button* smokeButton; 
+
     float physicsSpeedScale = 1.0f;  // persistent inertia multiplier for simple physics
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
