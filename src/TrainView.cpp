@@ -67,6 +67,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     water = new Water();
     skybox = new Skybox();
     totem = new TotemOfUndying();
+    terrain = new Terrain();
     backpack = new Backpack(this);
     mcChest = new McChest(this);
     mcMinecart = new McMinecart(this);
@@ -144,6 +145,19 @@ int TrainView::handle(int event) {
                 cp->pos.x = (float)rx;
                 cp->pos.y = (float)ry;
                 cp->pos.z = (float)rz;
+
+                // Terrain snapping: prevent control points from going underground
+                if (terrain) {
+                    float terrainHeight =
+                        terrain->getHeightAtWorldPos(cp->pos.x, cp->pos.z);
+                    const float minClearance =
+                        3.0f;  // Minimum height above terrain for control points
+
+                    if (cp->pos.y < terrainHeight + minClearance) {
+                        cp->pos.y = terrainHeight + minClearance;
+                    }
+                }
+
                 damage(1);
             }
             break;
@@ -334,8 +348,21 @@ void TrainView::drawPlane() {
     this->shader->Use();
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    if (tw->shaderBrowser->value() == 5) {
+        float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+        float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+        float scaleX = terrainWidth;
+        float scaleZ = terrainDepth;
+
+        // Position the water plane at the configured water height so it aligns with terrain and clipping
+        modelMatrix = glm::translate(modelMatrix,
+                                     glm::vec3(0.0f, water->waterHeight, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(scaleX, 1.0f, scaleZ));
+    } else {
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 10.0f, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    }
+
     glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
                        1, GL_FALSE, &modelMatrix[0][0]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
@@ -476,7 +503,16 @@ void TrainView::draw() {
         // Initialize Skybox once
         skybox->init();
         totem->init();
+        terrain->init(tw);
         glInited = true;
+    }
+
+    // Check for Minecraft mode toggle
+    static int lastMinecraftState = -1;
+    int currentMinecraftState = tw->minecraftButton->value();
+    if (currentMinecraftState != lastMinecraftState) {
+        terrain->rebuild();
+        lastMinecraftState = currentMinecraftState;
     }
 
     clearGlad();
@@ -495,7 +531,7 @@ void TrainView::draw() {
         } else if (shaderType == 4) {
             water->initSineWave();
         } else if (shaderType == 5) {
-            water->initReflectionWater();
+            water->initReflectionWater(this);
         }
         lastShader = shaderType;
     }
@@ -575,26 +611,11 @@ void TrainView::draw() {
 
     skybox->draw(view_matrix, projection_matrix);
 
-    // ---------- Draw the floor ----------
-    glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
-
-    glEnable(GL_LIGHTING);
-    setupObjects();
-
-    drawStuff();
-
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
-        setupShadows();
-        drawStuff(true);
-        unsetupShadows();
-    }
-
     // ---------- Draw the objects and shadows ----------
+    glUseProgram(0);
     glEnable(GL_LIGHTING);
     setupObjects();
+
     drawStuff();
 
     // this time drawing is for shadows (except for top view)
@@ -632,6 +653,9 @@ void TrainView::draw() {
 
     totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos,
                 smokeStartDistance, smokeEndDistance);
+
+    // ---------- Draw the terrain ----------
+    terrain->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
 
     // ---------- Draw the plane ----------
     drawPlane();
@@ -736,12 +760,26 @@ void TrainView::setProjection()
     } else if (tw->topCam->value()) {
         // ---------- Top Cam ----------
         float wi, he;
-        if (aspect >= 1) {
-            wi = 110;
-            he = wi / aspect;
+        if (terrain) {
+            // Compute half extents of the terrain in world coordinates
+            float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+            float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+            float halfW = terrainWidth * 0.5f;
+            float halfH = terrainDepth * 0.5f;
+
+            // Choose wi/he to ensure both width and depth are fully visible
+            // mapping of wi/he: ortho spans [-wi, wi], [-he, he]
+            wi = std::max(halfW, halfH * aspect);
+            he = std::max(halfH, halfW / aspect);
         } else {
-            he = 110;
-            wi = he * aspect;
+            // Fallback (previous behavior)
+            if (aspect >= 1) {
+                wi = 110;
+                he = wi / aspect;
+            } else {
+                he = 110;
+                wi = he * aspect;
+            }
         }
 
         // Set up the top camera drop mode to be orthogonal and set
@@ -1234,6 +1272,104 @@ void TrainView::drawTrack(bool doingShadows) {
         glEnd();
     }
 
+    // ---------- Draw Trestles (Support Pillars) ----------
+    // Check each track point and draw pillars if track is above terrain
+    const float minGapForTrestle = 5.0f;  // Minimum gap to trigger pillar
+    const int trestleInterval = 40;       // Draw pillars every N samples
+
+    if (!doingShadows && terrain) {
+        glColor3ub(101, 67, 33);  // Dark brown for pillars
+
+        for (size_t idx = 0; idx < trackCenters.size();
+             idx += trestleInterval) {
+            Pnt3f trackPos = trackCenters[idx];
+            float terrainHeight =
+                terrain->getHeightAtWorldPos(trackPos.x, trackPos.z);
+            float gap = trackPos.y - terrainHeight;
+
+            if (gap > minGapForTrestle) {
+                // Draw a pillar from terrain to track
+                const Pnt3f& right = rightVectors[idx];
+                const Pnt3f& up = upVectors[idx];
+
+                // Pillar dimensions
+                const float pillarWidth = 1.2f;
+                const float pillarDepth = 1.2f;
+
+                // Create pillar at track center
+                Pnt3f topCenter = trackPos - up * 1.0f;  // Slightly below track
+                Pnt3f bottomCenter =
+                    Pnt3f(trackPos.x, terrainHeight, trackPos.z);
+
+                // Use tangent for depth direction
+                Pnt3f tangent = trackTangents[idx];
+                Pnt3f widthVec = right * (pillarWidth * 0.5f);
+                Pnt3f depthVec = Pnt3f(tangent.x * (pillarDepth * 0.5f),
+                                       tangent.y * (pillarDepth * 0.5f),
+                                       tangent.z * (pillarDepth * 0.5f));
+
+                // Four corners at top
+                Pnt3f t1 = topCenter - widthVec - depthVec;
+                Pnt3f t2 = topCenter + widthVec - depthVec;
+                Pnt3f t3 = topCenter + widthVec + depthVec;
+                Pnt3f t4 = topCenter - widthVec + depthVec;
+
+                // Four corners at bottom
+                Pnt3f b1 = bottomCenter - widthVec - depthVec;
+                Pnt3f b2 = bottomCenter + widthVec - depthVec;
+                Pnt3f b3 = bottomCenter + widthVec + depthVec;
+                Pnt3f b4 = bottomCenter - widthVec + depthVec;
+
+                glBegin(GL_QUADS);
+
+                // Front face
+                glNormal3f(-tangent.x, -tangent.y, -tangent.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+
+                // Back face
+                glNormal3f(tangent.x, tangent.y, tangent.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+
+                // Left face
+                glNormal3f(-right.x, -right.y, -right.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+
+                // Right face
+                glNormal3f(right.x, right.y, right.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+
+                // Top (cap)
+                Pnt3f upNorm = Pnt3f(0, 1, 0);
+                glNormal3f(upNorm.x, upNorm.y, upNorm.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+
+                // Bottom (cap)
+                glNormal3f(-upNorm.x, -upNorm.y, -upNorm.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+
+                glEnd();
+            }
+        }
+    }
+
     glLineWidth(1.0f);
 }
 
@@ -1541,6 +1677,18 @@ void TrainView::drawTrain(bool doingShadows) {
 
     up = right * tangent;
     up.normalize();
+
+    // ---------- Terrain Snapping: Prevent train from going underground ----------
+    if (terrain) {
+        float terrainHeight =
+            terrain->getHeightAtWorldPos(position.x, position.z);
+        const float minClearance = 2.0f;  // Minimum distance above terrain
+
+        if (position.y < terrainHeight + minClearance) {
+            // Snap train above terrain
+            position.y = terrainHeight + minClearance;
+        }
+    }
 
     // Update train state
     trainPosition = position;

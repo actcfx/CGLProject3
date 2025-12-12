@@ -60,9 +60,11 @@ class ControlPoint;
 #include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
+#include "Stuffs/Terrain.hpp"
 #include "Stuffs/totemOfUndying.hpp"
 #include "RenderUtilities/Model.h"
 #include "Stuffs/ModelActors.hpp"
+
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -107,6 +109,7 @@ public:
     Water* water = nullptr;
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
+    Terrain* terrain = nullptr;
     Backpack* backpack = nullptr;
     McChest* mcChest = nullptr;
     McMinecart* mcMinecart = nullptr;

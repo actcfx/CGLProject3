@@ -42,6 +42,7 @@ add_executable(RollerCoasters
     ${SRC_DIR}Stuffs/TotemOfUndying.hpp
     ${SRC_DIR}Stuffs/ModelActors.hpp
     ${SRC_DIR}Stuffs/ModelActors.cpp)
+    ${SRC_DIR}Stuffs/Terrain.hpp)
 
 add_library(Utilities
     ${SRC_DIR}Utilities/3DUtils.h

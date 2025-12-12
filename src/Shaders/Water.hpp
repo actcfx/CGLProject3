@@ -14,7 +14,8 @@ public:
 
     void initSineWave();
     void initHeightMapWave();
-    void initReflectionWater();
+    // Initialize reflection water with size tied to current terrain in TrainView
+    void initReflectionWater(TrainView* tw);
     void initWaterFBOs(int width, int height);
 
     // Render methods need access to TrainView to draw the scene
@@ -36,7 +37,7 @@ public:
 
     int waterFBOWidth = 1024;
     int waterFBOHeight = 1024;
-    float waterHeight = 10.0f;
+    float waterHeight = 0.0f;
 
     // Wave parameters
     std::vector<glm::vec2> waveDirections;
