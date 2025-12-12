@@ -635,6 +635,12 @@ void TrainView::draw() {
     // ---------- Draw the plane ----------
     drawPlane();
 
+    if (backpack)
+        backpack->draw(glm::vec3(0, 20 + displace, 0));
+    if (mcMinecart)
+        mcMinecart->draw(glm::vec3(10, 20, 0));
+    displace++;
+    
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
     if (tw->toonButton->value() && tw->pixelizeButton->value()) {
@@ -705,12 +711,6 @@ void TrainView::draw() {
         mainFrameBuffer->drawQuad();
     }
     
-    if (backpack)
-        backpack->draw(glm::vec3(0, 20 + displace, 0));
-    if (mcMinecart)
-        mcMinecart->draw(glm::vec3(10, 20, 0));
-
-    displace++;
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);

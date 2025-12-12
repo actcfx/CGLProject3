@@ -5,12 +5,10 @@
 #include <glad/glad.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
 #include <stb_image.h>
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 #include <assimp/postprocess.h>
-#include <assimp/material.h>
 #include <string>
 #include <vector>
 #include <algorithm>
@@ -54,10 +52,12 @@ class Model
 
         static glm::mat4 aiToGlm(const aiMatrix4x4& m)
         {
-            // aiMatrix4x4 is row-major; GLM defaults to column-major.
-            // Use glm::make_mat4 to read the raw data, then transpose once
-            // so rotations/translations stay correct.
-            return glm::transpose(glm::make_mat4(&m.a1));
+            glm::mat4 result;
+            result[0][0] = m.a1; result[1][0] = m.a2; result[2][0] = m.a3; result[3][0] = m.a4;
+            result[0][1] = m.b1; result[1][1] = m.b2; result[2][1] = m.b3; result[3][1] = m.b4;
+            result[0][2] = m.c1; result[1][2] = m.c2; result[2][2] = m.c3; result[3][2] = m.c4;
+            result[0][3] = m.d1; result[1][3] = m.d2; result[2][3] = m.d3; result[3][3] = m.d4;
+            return result;
         }
 
         void processNode(aiNode *node, const aiScene *scene,
@@ -122,7 +122,6 @@ class Model
                     indices.push_back(face.mIndices[j]);
             }  
 
-            bool isDoubleSided = false;
             if(mesh->mMaterialIndex >= 0)
             {
                 aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
@@ -132,15 +131,9 @@ class Model
                 std::vector<Texture> specularMaps = loadMaterialTextures(material, 
                                                     aiTextureType_SPECULAR, "texture_specular", scene);
                 textures.insert(textures.end(), specularMaps.begin(), specularMaps.end());
-
-                int twoSidedFlag = 0;
-                if (material->Get(AI_MATKEY_TWOSIDED, twoSidedFlag) == AI_SUCCESS)
-                {
-                    isDoubleSided = (twoSidedFlag != 0);
-                }
             }  
 
-            return Mesh(vertices, indices, textures, isDoubleSided);
+            return Mesh(vertices, indices, textures);
         }  
 
         std::vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, std::string typeName,
