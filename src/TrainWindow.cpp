@@ -24,9 +24,14 @@
      Platform:    Visio Studio.Net 2003/2005
 
 *************************************************************************/
-
+#define STB_IMAGE_IMPLEMENTATION
 #include <FL/Fl_Box.h>
 #include <FL/fl.h>
+
+// for the 3D models
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 // for using the real time clock
 #include <time.h>
@@ -109,6 +114,9 @@ TrainWindow::TrainWindow(const int x, const int y)
         splineBrowser->add("Cubic B-Spline");
         splineBrowser->select(2);
 
+        bgmButton = new Fl_Button(735, pty, 60, 20, "BGM");
+        togglify(bgmButton, 1);
+
         pty += 110;
 
         // add and delete points
@@ -179,17 +187,24 @@ TrainWindow::TrainWindow(const int x, const int y)
         pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
         togglify(pixelizeButton, 0);
 
-        toonButton = new Fl_Button(675, pty, 60, 20, "Toon");
+        toonButton = new Fl_Button(670, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
+
+        smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
+        togglify(smokeButton, 0);
 
         pty += 30;
 
+        // ---------- Physics Button ----------
         physicsButton = new Fl_Button(605, pty, 60, 20, "Physics");
         togglify(physicsButton, 0);
 
-        pty += 30;
+        // ---------- Minecraft Button ----------
+        minecraftButton = new Fl_Button(675, pty, 60, 20, "Minecraft");
+        togglify(minecraftButton, 1);
 
-        // ---------- Reflection/Refraction Ratio Slider ----------
+        pty += 30;
+// ---------- Reflection/Refraction Ratio Slider ----------
         reflectRefractSlider =
             new Fl_Value_Slider(700, pty, 95, 20, "Reflect/Refract");
         reflectRefractSlider->range(0.0, 1.0);

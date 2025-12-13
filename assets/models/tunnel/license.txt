@@ -1,0 +1,11 @@
+Model Information:
+* title:	Arc Tunnel
+* source:	https://sketchfab.com/3d-models/arc-tunnel-eb1d0d35e3124603bf292c0ba0144e36
+* author:	speike (https://sketchfab.com/speike.styles)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Arc Tunnel" (https://sketchfab.com/3d-models/arc-tunnel-eb1d0d35e3124603bf292c0ba0144e36) by speike (https://sketchfab.com/speike.styles) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

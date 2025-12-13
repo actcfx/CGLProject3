@@ -80,6 +80,11 @@ public:
 	{
 		glUseProgram(this->Program);
 	}
+
+	void setInt(const std::string &name, int value) const
+	{
+		glUniform1i(glGetUniformLocation(this->Program, name.c_str()), value);
+	}
 private:
 	std::string readCode(const GLchar* path)
 	{

@@ -11,9 +11,22 @@ in V_OUT
 uniform vec3 u_color;
 
 uniform sampler2D u_texture;
+uniform vec3 u_cameraPos;
+uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 
 void main()
 {   
     vec3 color = vec3(texture(u_texture, f_in.texture_coordinate));
-    f_color = vec4(color, 1.0f);
+    float smoke = 0.0;
+    if (u_smokeParams.y > u_smokeParams.x && u_smokeParams.x >= 0.0) {
+        float dist = length(u_cameraPos - f_in.position);
+        smoke = clamp((dist - u_smokeParams.x) /
+                          max(u_smokeParams.y - u_smokeParams.x, 0.0001),
+                      0.0, 1.0);
+    }
+
+    if (!smokeEnabled) smoke = 0.0;
+    vec3 finalColor = mix(color, vec3(1.0), smoke);
+    f_color = vec4(finalColor, 1.0f);
 }

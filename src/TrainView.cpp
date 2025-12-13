@@ -26,10 +26,13 @@ references)
 #include <chrono>
 #include <cmath>
 #include <iostream>
+#include <string>
 #include <vector>
 
 #include <glad/glad.h>
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -38,6 +41,7 @@ references)
 #include "TrainView.H"
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
+#include "Stuffs/totemOfUndying.hpp"
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -49,6 +53,108 @@ references)
 
 #define DIVIDE_LINE 250.0f  // reduced for performance; was 1000
 #define GUAGE 5.0f
+
+static bool g_bgmStarted = false;
+
+static bool fileExistsW(const std::wstring& path) {
+    DWORD attr = GetFileAttributesW(path.c_str());
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static std::wstring resolveBgmPath(std::wstring& triedLog) {
+    // Requested path for BGM: assets/bgm/minecraft.mp3 (resolved relative to exe/cwd)
+    const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
+
+    wchar_t exePath[MAX_PATH] = {0};
+    DWORD len = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    std::wstring base;
+    if (len > 0 && len < MAX_PATH) {
+        std::wstring full(exePath);
+        size_t slash = full.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            base = full.substr(0, slash);
+        }
+    }
+
+    // working directory
+    wchar_t cwdBuf[MAX_PATH] = {0};
+    GetCurrentDirectoryW(MAX_PATH, cwdBuf);
+    std::wstring cwd(cwdBuf);
+
+    std::wstring candidates[] = {
+        base.empty() ? L"" : (base + L"\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\..\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relMp3),
+        cwd.empty() ? L"" : (cwd + L"\\" + relMp3),
+        relMp3
+    };
+
+    triedLog.clear();
+    for (const auto& p : candidates) {
+        if (!p.empty()) {
+            triedLog += p + L"\n";
+            if (fileExistsW(p)) {
+                return p;
+            }
+        }
+    }
+    return L"";
+}
+
+static void startBgmOnce() {
+    if (g_bgmStarted) return;
+
+    std::wstring tried;
+    std::wstring path = resolveBgmPath(tried);
+    if (path.empty()) {
+        std::cerr << "BGM not found. Place assets/bgm/minecraft.wav (or .mp3) next to the executable.\nTried paths:\n";
+        std::wcerr << tried.c_str();
+        return;
+    }
+
+    bool isMp3 = false;
+    if (path.size() >= 4) {
+        std::wstring ext = path.substr(path.size() - 4);
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        isMp3 = (ext == L".mp3");
+    }
+
+    if (isMp3) {
+        mciSendStringW(L"close bgm", NULL, 0, NULL);
+        std::wstring openCmd = L"open \"" + path + L"\" type mpegvideo alias bgm";
+        MCIERROR openErr = mciSendStringW(openCmd.c_str(), NULL, 0, NULL);
+        if (openErr != 0) {
+            std::cerr << "MCI open failed for mp3: " << std::string(path.begin(), path.end())
+                      << " error code: " << openErr << std::endl;
+            return;
+        }
+        MCIERROR playErr = mciSendStringW(L"play bgm repeat", NULL, 0, NULL);
+        if (playErr != 0) {
+            std::cerr << "MCI play failed for mp3: " << std::string(path.begin(), path.end())
+                      << " error code: " << playErr << std::endl;
+            mciSendStringW(L"close bgm", NULL, 0, NULL);
+            return;
+        }
+        g_bgmStarted = true;
+    } else {
+        BOOL ok = PlaySoundW(path.c_str(), NULL,
+                             SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
+        if (ok) {
+            g_bgmStarted = true;
+        } else {
+            std::cerr << "PlaySound failed (ensure 16-bit PCM WAV 44.1kHz; mp3 uses MCI path): "
+                      << std::string(path.begin(), path.end()) << std::endl;
+        }
+    }
+}
+
+static void stopBgm() {
+    if (!g_bgmStarted) return;
+    PlaySoundW(NULL, NULL, 0);
+    mciSendStringW(L"close bgm", NULL, 0, NULL);
+    g_bgmStarted = false;
+}
 
 //************************************************************************
 //
@@ -66,6 +172,12 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     water = new Water();
     skybox = new Skybox();
     totem = new TotemOfUndying();
+    terrain = new Terrain();
+    mcChest = new McChest(this);
+    mcMinecart = new McMinecart(this);
+    mcFox = new McFox(this);
+    mcVillager = new McVillager(this);
+    tunnel = new Tunnel(this);
 }
 
 //************************************************************************
@@ -139,6 +251,19 @@ int TrainView::handle(int event) {
                 cp->pos.x = (float)rx;
                 cp->pos.y = (float)ry;
                 cp->pos.z = (float)rz;
+
+                // Terrain snapping: prevent control points from going underground
+                if (terrain) {
+                    float terrainHeight =
+                        terrain->getHeightAtWorldPos(cp->pos.x, cp->pos.z);
+                    const float minClearance =
+                        3.0f;  // Minimum height above terrain for control points
+
+                    if (cp->pos.y < terrainHeight + minClearance) {
+                        cp->pos.y = terrainHeight + minClearance;
+                    }
+                }
+
                 damage(1);
             }
             break;
@@ -265,6 +390,17 @@ void TrainView::setLighting() {
             glDisable(GL_LIGHT2);
         }
     }
+
+    if (tw->smokeButton->value()) {
+        GLfloat fogColor[4] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        glEnable(GL_FOG);
+        glFogfv(GL_FOG_COLOR, fogColor);
+        glFogi(GL_FOG_MODE, GL_LINEAR);
+        glFogf(GL_FOG_START, smokeStartDistance);
+        glFogf(GL_FOG_END, smokeEndDistance);
+    }else {
+        glDisable(GL_FOG);
+    }
 }
 
 void TrainView::setUBO() {
@@ -322,8 +458,21 @@ void TrainView::drawPlane() {
     this->shader->Use();
 
     glm::mat4 modelMatrix = glm::mat4(1.0f);
-    modelMatrix = glm::translate(modelMatrix, glm::vec3(0, 10.0f, 0.0f));
-    modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    if (tw->shaderBrowser->value() == 5) {
+        float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+        float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+        float scaleX = terrainWidth;
+        float scaleZ = terrainDepth;
+
+        // Position the water plane at the configured water height so it aligns with terrain and clipping
+        modelMatrix = glm::translate(modelMatrix,
+                                     glm::vec3(0.0f, water->waterHeight, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(scaleX, 1.0f, scaleZ));
+    } else {
+        modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 10.0f, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+    }
+
     glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
                        1, GL_FALSE, &modelMatrix[0][0]);
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_color"), 1,
@@ -419,6 +568,18 @@ void TrainView::drawPlane() {
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_cameraPos"), 1,
                  &cameraPos[0]);
 
+    GLint smokeLoc =
+        glGetUniformLocation(this->shader->Program, "u_smokeParams");
+    if (smokeLoc >= 0) {
+        glUniform2f(smokeLoc, smokeStartDistance, smokeEndDistance);
+    }
+
+    GLint smokeEnabledLoc =
+        glGetUniformLocation(this->shader->Program, "smokeEnabled");
+    if (smokeEnabledLoc >= 0 && tw && tw->smokeButton) {
+        glUniform1i(smokeEnabledLoc, tw->smokeButton->value() ? 1 : 0);
+    }
+
     // Bind skybox for reflection
     if (skybox && skybox->getTexture() != 0) {
         glActiveTexture(GL_TEXTURE5);
@@ -457,8 +618,29 @@ void TrainView::draw() {
         }
         // Initialize Skybox once
         skybox->init();
-        totem->init();
+        totem->init(this);
+        terrain->init(tw);
         glInited = true;
+    }
+
+    // Start/stop background music based on UI toggle; defaults to on when toggle is absent
+    bool bgmEnabled = true;
+    if (tw && tw->bgmButton) {
+        bgmEnabled = tw->bgmButton->value() != 0;
+    }
+
+    if (bgmEnabled) {
+        startBgmOnce();
+    } else {
+        stopBgm();
+    }
+
+    // Check for Minecraft mode toggle
+    static int lastMinecraftState = -1;
+    int currentMinecraftState = tw->minecraftButton->value();
+    if (currentMinecraftState != lastMinecraftState) {
+        terrain->rebuild();
+        lastMinecraftState = currentMinecraftState;
     }
 
     clearGlad();
@@ -477,7 +659,7 @@ void TrainView::draw() {
         } else if (shaderType == 4) {
             water->initSineWave();
         } else if (shaderType == 5) {
-            water->initReflectionWater();
+            water->initReflectionWater(this);
         }
         lastShader = shaderType;
     }
@@ -557,26 +739,11 @@ void TrainView::draw() {
 
     skybox->draw(view_matrix, projection_matrix);
 
-    // ---------- Draw the floor ----------
-    glUseProgram(0);
-    setupFloor();
-    drawFloor(200, 10);
-
-    glEnable(GL_LIGHTING);
-    setupObjects();
-
-    drawStuff();
-
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
-        setupShadows();
-        drawStuff(true);
-        unsetupShadows();
-    }
-
     // ---------- Draw the objects and shadows ----------
+    glUseProgram(0);
     glEnable(GL_LIGHTING);
     setupObjects();
+
     drawStuff();
 
     // this time drawing is for shadows (except for top view)
@@ -612,11 +779,15 @@ void TrainView::draw() {
     glm::mat4 invView = glm::inverse(totemViewMatrix);
     glm::vec3 totemCameraPos = glm::vec3(invView[3]);
 
-    totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
+    totem->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos,
+                smokeStartDistance, smokeEndDistance);
+
+    // ---------- Draw the terrain ----------
+    terrain->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
 
     // ---------- Draw the plane ----------
     drawPlane();
-
+    
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
     if (tw->toonButton->value() && tw->pixelizeButton->value()) {
@@ -686,6 +857,7 @@ void TrainView::draw() {
         mainFrameBuffer->bindTexture(0);
         mainFrameBuffer->drawQuad();
     }
+    
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -709,12 +881,26 @@ void TrainView::setProjection()
     } else if (tw->topCam->value()) {
         // ---------- Top Cam ----------
         float wi, he;
-        if (aspect >= 1) {
-            wi = 110;
-            he = wi / aspect;
+        if (terrain) {
+            // Compute half extents of the terrain in world coordinates
+            float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+            float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+            float halfW = terrainWidth * 0.5f;
+            float halfH = terrainDepth * 0.5f;
+
+            // Choose wi/he to ensure both width and depth are fully visible
+            // mapping of wi/he: ortho spans [-wi, wi], [-he, he]
+            wi = std::max(halfW, halfH * aspect);
+            he = std::max(halfH, halfW / aspect);
         } else {
-            he = 110;
-            wi = he * aspect;
+            // Fallback (previous behavior)
+            if (aspect >= 1) {
+                wi = 110;
+                he = wi / aspect;
+            } else {
+                he = 110;
+                wi = he * aspect;
+            }
         }
 
         // Set up the top camera drop mode to be orthogonal and set
@@ -780,6 +966,14 @@ void TrainView::drawStuff(bool doingShadows) {
 
     // draw the oden
     drawOden(doingShadows);
+
+    // ---------- Draw Minecraft Models ----------
+    if (mcChest)
+        mcChest->draw(glm::vec3(0, -10, 0));
+    if (mcFox)
+        mcFox->draw(glm::vec3(-20, -10, -20));
+    if (tunnel)
+        tunnel->draw(glm::vec3(80, -30, 80));
 
 #ifdef EXAMPLE_SOLUTION
     // don't draw the train if you're looking out the front window
@@ -1207,6 +1401,104 @@ void TrainView::drawTrack(bool doingShadows) {
         glEnd();
     }
 
+    // ---------- Draw Trestles (Support Pillars) ----------
+    // Check each track point and draw pillars if track is above terrain
+    const float minGapForTrestle = 5.0f;  // Minimum gap to trigger pillar
+    const int trestleInterval = 40;       // Draw pillars every N samples
+
+    if (!doingShadows && terrain) {
+        glColor3ub(101, 67, 33);  // Dark brown for pillars
+
+        for (size_t idx = 0; idx < trackCenters.size();
+             idx += trestleInterval) {
+            Pnt3f trackPos = trackCenters[idx];
+            float terrainHeight =
+                terrain->getHeightAtWorldPos(trackPos.x, trackPos.z);
+            float gap = trackPos.y - terrainHeight;
+
+            if (gap > minGapForTrestle) {
+                // Draw a pillar from terrain to track
+                const Pnt3f& right = rightVectors[idx];
+                const Pnt3f& up = upVectors[idx];
+
+                // Pillar dimensions
+                const float pillarWidth = 1.2f;
+                const float pillarDepth = 1.2f;
+
+                // Create pillar at track center
+                Pnt3f topCenter = trackPos - up * 1.0f;  // Slightly below track
+                Pnt3f bottomCenter =
+                    Pnt3f(trackPos.x, terrainHeight, trackPos.z);
+
+                // Use tangent for depth direction
+                Pnt3f tangent = trackTangents[idx];
+                Pnt3f widthVec = right * (pillarWidth * 0.5f);
+                Pnt3f depthVec = Pnt3f(tangent.x * (pillarDepth * 0.5f),
+                                       tangent.y * (pillarDepth * 0.5f),
+                                       tangent.z * (pillarDepth * 0.5f));
+
+                // Four corners at top
+                Pnt3f t1 = topCenter - widthVec - depthVec;
+                Pnt3f t2 = topCenter + widthVec - depthVec;
+                Pnt3f t3 = topCenter + widthVec + depthVec;
+                Pnt3f t4 = topCenter - widthVec + depthVec;
+
+                // Four corners at bottom
+                Pnt3f b1 = bottomCenter - widthVec - depthVec;
+                Pnt3f b2 = bottomCenter + widthVec - depthVec;
+                Pnt3f b3 = bottomCenter + widthVec + depthVec;
+                Pnt3f b4 = bottomCenter - widthVec + depthVec;
+
+                glBegin(GL_QUADS);
+
+                // Front face
+                glNormal3f(-tangent.x, -tangent.y, -tangent.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+
+                // Back face
+                glNormal3f(tangent.x, tangent.y, tangent.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+
+                // Left face
+                glNormal3f(-right.x, -right.y, -right.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+
+                // Right face
+                glNormal3f(right.x, right.y, right.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+
+                // Top (cap)
+                Pnt3f upNorm = Pnt3f(0, 1, 0);
+                glNormal3f(upNorm.x, upNorm.y, upNorm.z);
+                glVertex3f(t1.x, t1.y, t1.z);
+                glVertex3f(t2.x, t2.y, t2.z);
+                glVertex3f(t3.x, t3.y, t3.z);
+                glVertex3f(t4.x, t4.y, t4.z);
+
+                // Bottom (cap)
+                glNormal3f(-upNorm.x, -upNorm.y, -upNorm.z);
+                glVertex3f(b1.x, b1.y, b1.z);
+                glVertex3f(b4.x, b4.y, b4.z);
+                glVertex3f(b3.x, b3.y, b3.z);
+                glVertex3f(b2.x, b2.y, b2.z);
+
+                glEnd();
+            }
+        }
+    }
+
     glLineWidth(1.0f);
 }
 
@@ -1217,6 +1509,9 @@ void TrainView::drawTrain(bool doingShadows) {
     if (pointCount < minPoints) {
         return;
     }
+
+    const bool useMinecraftTrain =
+        tw->minecraftButton && tw->minecraftButton->value();
 
     float rawParam = m_pTrack->trainU;
     if (rawParam < 0.0f) {
@@ -1515,18 +1810,55 @@ void TrainView::drawTrain(bool doingShadows) {
     up = right * tangent;
     up.normalize();
 
-    // Update train state
-    trainPosition = position;
-    trainForward = tangent;
-    trainUp = up;
+    // ---------- Terrain Snapping: Prevent train from going underground ----------
+    if (terrain) {
+        float terrainHeight =
+            terrain->getHeightAtWorldPos(position.x, position.z);
+        const float minClearance = 2.0f;  // Minimum distance above terrain
 
-    if (!tw->trainCam->value()) {
-        const float halfExtent = 5.0f;
+        if (position.y < terrainHeight + minClearance) {
+            // Snap train above terrain
+            position.y = terrainHeight + minClearance;
+        }
+    }
+
+    const float wheelRadius = 3.25f;
+    const float wheelWidth = 2.0f;
+    const float twoPi = 2.0f * static_cast<float>(M_PI);
+    const float bodyLift = 5.0f;
+    const float wheelBodyGap = -2.0f;
+
+    Pnt3f previousTrainPosition = trainPosition;
+    float distanceMoved = 0.0f;
+    if (wheelParamInitialized) {
+        Pnt3f delta = position - previousTrainPosition;
+        distanceMoved =
+            std::sqrt(delta.x * delta.x + delta.y * delta.y +
+                      delta.z * delta.z);
+    } else {
+        wheelParamInitialized = true;
+    }
+
+    if (distanceMoved > 1e-4f && wheelRadius > 1e-4f) {
+        // Subtract to reverse visual rotation direction
+        wheelAngle -= distanceMoved / wheelRadius;
+        if (wheelAngle > twoPi || wheelAngle < -twoPi) {
+            wheelAngle = std::fmod(wheelAngle, twoPi);
+        }
+    }
+
+    const float halfExtent = 5.0f;
+    Pnt3f halfUp = up * halfExtent;
+    Pnt3f center = position + halfUp + up * bodyLift;
+
+    Pnt3f updatedTrainPosition = position;
+    if (!useMinecraftTrain) {
+        updatedTrainPosition = center;
+    }
+
+    if (!useMinecraftTrain && !tw->trainCam->value()) {
         Pnt3f halfForward = tangent * halfExtent;
         Pnt3f halfRight = right * halfExtent;
-        Pnt3f halfUp = up * halfExtent;
-
-        Pnt3f center = position + halfUp;
 
         Pnt3f frontTopRight = center + halfForward + halfRight + halfUp;
         Pnt3f frontTopLeft = center + halfForward - halfRight + halfUp;
@@ -1538,8 +1870,6 @@ void TrainView::drawTrain(bool doingShadows) {
         Pnt3f backBottomLeft = center - halfForward - halfRight - halfUp;
 
         if (!doingShadows) {
-            // set train color
-            // glColor3ub(200, 40, 40);
             glColor3ub(255, 255, 255);
         }
 
@@ -1547,12 +1877,13 @@ void TrainView::drawTrain(bool doingShadows) {
         // Front face
         if (!doingShadows) {
             glColor3ub(89, 110, 57);
-        }  // front face colored
+        }
         glNormal3f(tangent.x, tangent.y, tangent.z);
         glTexCoord2f(0.0f, 0.0f);
         glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
         glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
         glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
         glTexCoord2f(0.0f, 1.0f);
@@ -1561,7 +1892,7 @@ void TrainView::drawTrain(bool doingShadows) {
         // Back face
         if (!doingShadows) {
             glColor3ub(255, 255, 255);
-        }  // other faces default
+        }
         glNormal3f(-tangent.x, -tangent.y, -tangent.z);
         glTexCoord2f(0.0f, 0.0f);
         glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
@@ -1573,9 +1904,6 @@ void TrainView::drawTrain(bool doingShadows) {
         glVertex3f(backTopRight.x, backTopRight.y, backTopRight.z);
 
         // Left face
-        if (!doingShadows) {
-            glColor3ub(255, 255, 255);
-        }
         glNormal3f(-right.x, -right.y, -right.z);
         glTexCoord2f(0.0f, 0.0f);
         glVertex3f(backBottomLeft.x, backBottomLeft.y, backBottomLeft.z);
@@ -1587,12 +1915,10 @@ void TrainView::drawTrain(bool doingShadows) {
         glVertex3f(backTopLeft.x, backTopLeft.y, backTopLeft.z);
 
         // Right face
-        if (!doingShadows) {
-            glColor3ub(255, 255, 255);
-        }
         glNormal3f(right.x, right.y, right.z);
         glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
         glTexCoord2f(1.0f, 0.0f);
         glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
@@ -1618,10 +1944,150 @@ void TrainView::drawTrain(bool doingShadows) {
         glTexCoord2f(1.0f, 0.0f);
         glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y,
+                   frontBottomRight.z);
         glTexCoord2f(0.0f, 1.0f);
         glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
         glEnd();
+
+        const float axleInnerOffset = -1.5f; // negative moves wheels closer to center
+        const float axleInset = halfExtent + wheelWidth * 0.5f + axleInnerOffset;
+        Pnt3f bodyBottom = center - halfUp;
+        Pnt3f axleCenter = bodyBottom - up * (wheelRadius + wheelBodyGap);
+        const int rimSlices = 48;
+        const int sectorSlices = 24;
+        const float halfWheelWidth = wheelWidth * 0.5f;
+
+        auto drawWheel = [&](const Pnt3f& center) {
+            if (!doingShadows) {
+                glColor3ub(45, 45, 45);
+            }
+
+            glBegin(GL_QUAD_STRIP);
+            for (int i = 0; i <= rimSlices; ++i) {
+                float theta = (static_cast<float>(i) / rimSlices) * twoPi;
+                float angle = theta + wheelAngle;
+                float c = std::cos(angle);
+                float s = std::sin(angle);
+                Pnt3f radial = (up * c + tangent * s) * wheelRadius;
+                Pnt3f normal = radial;
+                normal.normalize();
+
+                Pnt3f outer = center + radial + right * halfWheelWidth;
+                Pnt3f inner = center + radial - right * halfWheelWidth;
+
+                glNormal3f(normal.x, normal.y, normal.z);
+                glVertex3f(outer.x, outer.y, outer.z);
+                glVertex3f(inner.x, inner.y, inner.z);
+            }
+            glEnd();
+
+            auto drawCap = [&](float sign) {
+                Pnt3f capCenter = center + right * (sign * halfWheelWidth);
+                Pnt3f capNormal = right * sign;
+
+                glBegin(GL_TRIANGLES);
+                for (int i = 0; i < sectorSlices; ++i) {
+                    float theta0 =
+                        (static_cast<float>(i) / sectorSlices) * twoPi +
+                        wheelAngle;
+                    float theta1 = (static_cast<float>(i + 1) / sectorSlices) *
+                                       twoPi + wheelAngle;
+
+                    Pnt3f rim0 = capCenter +
+                                 (up * std::cos(theta0) +
+                                  tangent * std::sin(theta0)) * wheelRadius;
+                    Pnt3f rim1 = capCenter +
+                                 (up * std::cos(theta1) +
+                                  tangent * std::sin(theta1)) * wheelRadius;
+
+                    if (!doingShadows) {
+                        if (i % 2 == 0) {
+                            glColor3ub(70, 140, 255);
+                        } else {
+                            glColor3ub(255, 80, 95);
+                        }
+                    }
+
+                    glNormal3f(capNormal.x, capNormal.y, capNormal.z);
+                    glVertex3f(capCenter.x, capCenter.y, capCenter.z);
+                    glVertex3f(rim0.x, rim0.y, rim0.z);
+                    glVertex3f(rim1.x, rim1.y, rim1.z);
+                }
+                glEnd();
+            };
+
+            drawCap(1.0f);
+            drawCap(-1.0f);
+        };
+
+        drawWheel(axleCenter + right * axleInset);
+        drawWheel(axleCenter - right * axleInset);
+    }
+
+    // Update train state
+    trainPosition = updatedTrainPosition;
+    trainForward = tangent;
+    trainUp = up;
+    
+    if (useMinecraftTrain && !tw->trainCam->value() && mcMinecart && mcVillager) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+        const float heightOffset = 2.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
+
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+
+        const glm::mat4 assetFix =
+            glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
+                        glm::vec3(0.0f, 1.0f, 0.0f));
+
+        glm::mat4 modelMatrix = basis * assetFix;
+        glm::mat4 villagerOffset =
+            glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
+            
+        mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
+        mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
+                         smokeEndDistance);
+    }
+
+    if(useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+        const float heightOffset = 5.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
+
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+
+        glm::mat4 modelMatrix = basis;
+            
+        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
+    }else if(!useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+        const float heightOffset = 10.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
+
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+
+        glm::mat4 modelMatrix = basis;
+            
+        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
     }
 }
 
@@ -1842,3 +2308,4 @@ void TrainView::doPick()
 
     printf("Selected Cube %d\n", selectedCube);
 }
+

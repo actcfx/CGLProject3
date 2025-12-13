@@ -8,7 +8,8 @@ set(LIB_DIR ${PROJECT_SOURCE_DIR}/lib/)
 include_directories(${INCLUDE_DIR})
 include_directories(${INCLUDE_DIR}glad4.6/include/)
 include_directories(${INCLUDE_DIR}glm-0.9.8.5/glm/)
-include_directories(${SRC_DIR}RenderUtilities)
+include_directories(${INCLUDE_DIR}assimp/)
+include_directories(${SRC_DIR}RenderUtilities/)
 
 add_Definitions("-D_XKEYCHECK_H")
 add_definitions(-DPROJECT_DIR="${PROJECT_SOURCE_DIR}")
@@ -29,13 +30,20 @@ add_executable(RollerCoasters
     ${SRC_DIR}RenderUtilities/BufferObject.h
     ${SRC_DIR}RenderUtilities/Shader.h
     ${SRC_DIR}RenderUtilities/Texture.h
+    ${SRC_DIR}RenderUtilities/Mesh.h
+    ${SRC_DIR}RenderUtilities/Model.h
+    ${SRC_DIR}RenderUtilities/stb_image.h
     ${INCLUDE_DIR}glad4.6/src/glad.c
     ${SRC_DIR}Shaders/Framebuffer.hpp
     ${SRC_DIR}Shaders/Church.hpp
     ${SRC_DIR}Shaders/Skybox.hpp
     ${SRC_DIR}Shaders/Water.hpp
     ${SRC_DIR}Shaders/Water.cpp
-    ${SRC_DIR}Stuffs/TotemOfUndying.hpp)
+    ${SRC_DIR}Stuffs/TotemOfUndying.hpp
+    ${SRC_DIR}Stuffs/Terrain.hpp
+    ${SRC_DIR}Stuffs/ModelActors.hpp
+    ${SRC_DIR}Stuffs/ModelActors.cpp
+    ${SRC_DIR}Stuffs/Terrain.hpp)
 
 add_library(Utilities
     ${SRC_DIR}Utilities/3DUtils.h
@@ -43,7 +51,10 @@ add_library(Utilities
     ${SRC_DIR}Utilities/ArcBallCam.h
     ${SRC_DIR}Utilities/ArcBallCam.cpp
     ${SRC_DIR}Utilities/Pnt3f.h
-    ${SRC_DIR}Utilities/Pnt3f.cpp)
+    ${SRC_DIR}Utilities/Pnt3f.cpp
+    ${SRC_DIR}RenderUtilities/Mesh.h
+    ${SRC_DIR}RenderUtilities/Model.h
+    ${SRC_DIR}RenderUtilities/stb_image.h)
 
 target_link_libraries(RollerCoasters
     debug ${LIB_DIR}Debug/fltk_formsd.lib      optimized ${LIB_DIR}Release/fltk_forms.lib
@@ -61,6 +72,11 @@ target_link_libraries(RollerCoasters
     ${LIB_DIR}ex-common.lib
     debug ${LIB_DIR}Debug/opencv_world341d.lib
     optimized ${LIB_DIR}Release/opencv_world341.lib)
+
+target_link_libraries(RollerCoasters
+    debug ${LIB_DIR}Debug/assimp-vc142-mtd.lib      
+    optimized ${LIB_DIR}Release/assimp-vc142-mt.lib 
+)
 
 target_link_libraries(RollerCoasters Utilities)
 

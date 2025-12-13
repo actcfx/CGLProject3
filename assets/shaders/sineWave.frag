@@ -10,6 +10,8 @@ uniform vec4 color = vec4(0.0, 0.2, 0.7, 1.0); // Adjusted to blue
 uniform float shininess = 50.0f;
 uniform vec3 light_position = vec3(50.0f, 32.0f, 560.0f);
 uniform vec3 u_cameraPos;
+uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 
 void main(void){
     vec3 light_direction = normalize(light_position - vs_worldpos);
@@ -20,5 +22,17 @@ void main(void){
     float specular = pow(max(0.0, dot(vs_normal, half_vector)), shininess);
 
     out_color = min(color * color_ambient + diffuse * color_diffuse + specular * color_specular, vec4(1.0));
+
+    float smoke = 0.0;
+    if (u_smokeParams.y > u_smokeParams.x && u_smokeParams.x >= 0.0) {
+        float dist = length(u_cameraPos - vs_worldpos);
+        smoke = clamp((dist - u_smokeParams.x) /
+                          max(u_smokeParams.y - u_smokeParams.x, 0.0001),
+                      0.0, 1.0);
+    }
+
+    if (!smokeEnabled) smoke = 0.0;
+    out_color.rgb = mix(out_color.rgb, vec3(1.0), smoke);
+
     out_color.a = 0.8; // Make it slightly transparent
 }

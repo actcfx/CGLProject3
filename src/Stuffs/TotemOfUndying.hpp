@@ -5,6 +5,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include "../TrainView.H"
+#include "../TrainWindow.H"
 #include "../RenderUtilities/BufferObject.h"
 #include "../RenderUtilities/Shader.h"
 #include "../RenderUtilities/Texture.h"
@@ -42,13 +44,18 @@ public:
     Texture2D* texture = nullptr;
     Shader* shader = nullptr;
     UBO* commonMatrices = nullptr;
+    TrainView* owner = nullptr;
 
     TotemOfUndying() {}
 
     ~TotemOfUndying() { cleanup(); }
 
-    void init() {
+    void init(TrainView* owner) {
         cleanup();
+
+        if(!this->owner) {
+            this->owner = owner;
+        }
 
         // Initialize shader (use custom totem shader for better alpha handling)
         if (!this->shader) {
@@ -143,7 +150,8 @@ public:
     }
 
     void draw(const glm::mat4& viewMatrix, const glm::mat4& projectionMatrix,
-              const glm::vec3& cameraPos) {
+              const glm::vec3& cameraPos, float smokeStart,
+              float smokeEnd) {
         if (!this->shader || !this->quad || !this->texture) {
             return;
         }
@@ -210,6 +218,22 @@ public:
         glUniformMatrix4fv(
             glGetUniformLocation(this->shader->Program, "u_projection"), 1,
             GL_FALSE, &projectionMatrix[0][0]);
+
+        const GLint camLoc =
+            glGetUniformLocation(this->shader->Program, "u_cameraPos");
+        if (camLoc >= 0) {
+            glUniform3fv(camLoc, 1, &cameraPos[0]);
+        }
+        const GLint smokeLoc =
+            glGetUniformLocation(this->shader->Program, "u_smokeParams");
+        if (smokeLoc >= 0) {
+            glUniform2f(smokeLoc, smokeStart, smokeEnd);
+        }
+        const GLint smokeEnabledLoc =
+        glGetUniformLocation(shader->Program, "smokeEnabled");
+        if (smokeEnabledLoc >= 0 && owner && owner->tw && owner->tw->smokeButton) {
+            glUniform1i(smokeEnabledLoc, owner->tw->smokeButton->value() ? 1 : 0);
+        }
 
         // Bind texture
         this->texture->bind(0);

@@ -60,7 +60,12 @@ class ControlPoint;
 #include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
-#include "Stuffs/totemOfUndying.hpp"
+#include "Stuffs/Terrain.hpp"
+#include "RenderUtilities/Model.h"
+#include "Stuffs/ModelActors.hpp"
+
+class TotemOfUndying;
+
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -93,6 +98,7 @@ public:
     void doPick();
 
 public:
+    int displace = 0;
     ArcBallCam arcball;  // keep an ArcBall for the UI
     int selectedCube{};  // simple - just remember which cube is selected
 
@@ -104,10 +110,20 @@ public:
     Water* water = nullptr;
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
+    Terrain* terrain = nullptr;
+
+    // 3D Models
+    McChest* mcChest = nullptr;
+    McMinecart* mcMinecart = nullptr;
+    McFox* mcFox = nullptr;
+    McVillager* mcVillager = nullptr;
+    Tunnel* tunnel = nullptr;
+    
+    float getSmokeStart() const { return smokeStartDistance; }
+    float getSmokeEnd() const { return smokeEndDistance; }
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
-
 private:
     // ---------- Lighting ----------
     void setLighting();
@@ -116,6 +132,9 @@ private:
     Pnt3f trainPosition;
     Pnt3f trainForward;
     Pnt3f trainUp;
+
+    float wheelAngle = 0.0f;
+    bool wheelParamInitialized = false;
 
     // ---------- Arc Length ----------
     struct ArcLengthTable {
@@ -151,4 +170,7 @@ private:
     Shader* toonShader = nullptr;
 
     void initFrameBufferShader();
+
+    float smokeStartDistance = 100.0f;
+    float smokeEndDistance = 800.0f;
 };
