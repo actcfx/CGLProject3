@@ -147,3 +147,6 @@ McFox::McFox(TrainView* owner)
 
 McVillager::McVillager(TrainView* owner)
     : ModelActor(owner, "./assets/models/minecraftVillager/scene.gltf", 1.0f) {}
+
+Tunnel::Tunnel(TrainView* owner)
+    : ModelActor(owner, "./assets/models/tunnel/scene.gltf", 0.2f) {}

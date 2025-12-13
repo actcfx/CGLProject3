@@ -187,6 +187,8 @@ TrainWindow::TrainWindow(const int x, const int y)
         toonButton = new Fl_Button(670, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
 
+        bgmButton = new Fl_Button(735, pty, 60, 20, "");
+        togglify(bgmButton, 1);
         smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
 

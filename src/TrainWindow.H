@@ -108,6 +108,8 @@ public:
 
     Fl_Button* minecraftButton;
 
+    Fl_Button* bgmButton;
+
     Fl_Button* smokeButton; 
 
     float physicsSpeedScale = 1.0f;  // persistent inertia multiplier for simple physics

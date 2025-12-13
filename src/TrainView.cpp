@@ -31,6 +31,8 @@ references)
 
 #include <glad/glad.h>
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -51,6 +53,92 @@ references)
 
 #define DIVIDE_LINE 250.0f  // reduced for performance; was 1000
 #define GUAGE 5.0f
+
+static bool g_bgmStarted = false;
+
+static bool fileExistsW(const std::wstring& path) {
+    DWORD attr = GetFileAttributesW(path.c_str());
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+}
+
+static std::wstring resolveBgmPath(std::wstring& triedLog) {
+    const std::wstring relWav = L"assets\\bgm\\minecraft.wav";
+    const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
+
+    wchar_t exePath[MAX_PATH] = {0};
+    DWORD len = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
+    std::wstring base;
+    if (len > 0 && len < MAX_PATH) {
+        std::wstring full(exePath);
+        size_t slash = full.find_last_of(L"\\/");
+        if (slash != std::wstring::npos) {
+            base = full.substr(0, slash);
+        }
+    }
+
+    // working directory
+    wchar_t cwdBuf[MAX_PATH] = {0};
+    GetCurrentDirectoryW(MAX_PATH, cwdBuf);
+    std::wstring cwd(cwdBuf);
+
+    std::wstring projectRoot = L"E:\\GitHub\\CGLProject3";  // explicit fallback if paths above fail
+
+    std::wstring candidates[] = {
+        base.empty() ? L"" : (base + L"\\" + relWav),
+        base.empty() ? L"" : (base + L"\\..\\" + relWav),
+        base.empty() ? L"" : (base + L"\\..\\..\\" + relWav),
+        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relWav),
+        base.empty() ? L"" : (base + L"\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\..\\" + relMp3),
+        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relMp3),
+        cwd.empty() ? L"" : (cwd + L"\\" + relWav),
+        cwd.empty() ? L"" : (cwd + L"\\" + relMp3),
+        projectRoot.empty() ? L"" : (projectRoot + L"\\" + relWav),
+        projectRoot.empty() ? L"" : (projectRoot + L"\\" + relMp3),
+        relWav,
+        relMp3
+    };
+
+    triedLog.clear();
+    for (const auto& p : candidates) {
+        if (!p.empty()) {
+            triedLog += p + L"\n";
+            if (fileExistsW(p)) {
+                return p;
+            }
+        }
+    }
+    return L"";
+}
+
+static void startBgmOnce() {
+    if (g_bgmStarted) return;
+
+    std::wstring tried;
+    std::wstring path = resolveBgmPath(tried);
+    if (path.empty()) {
+        std::cerr << "BGM not found. Place assets/bgm/minecraft.wav (or .mp3) next to the executable.\nTried paths:\n";
+        std::wcerr << tried.c_str();
+        return;
+    }
+
+    BOOL ok = PlaySoundW(path.c_str(), NULL,
+                         SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
+    if (ok) {
+        g_bgmStarted = true;
+    } else {
+        std::cerr << "PlaySound failed (ensure 16-bit PCM WAV if wav; mp3 not supported by PlaySound): "
+                  << std::string(path.begin(), path.end()) << std::endl;
+    }
+}
+
+static void stopBgm() {
+    if (!g_bgmStarted) return;
+    PlaySoundW(NULL, NULL, 0);
+    mciSendStringW(L"close bgm", NULL, 0, NULL);
+    g_bgmStarted = false;
+}
 
 //************************************************************************
 //
@@ -73,6 +161,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcMinecart = new McMinecart(this);
     mcFox = new McFox(this);
     mcVillager = new McVillager(this);
+    tunnel = new Tunnel(this);
 }
 
 //************************************************************************
@@ -518,6 +607,18 @@ void TrainView::draw() {
         glInited = true;
     }
 
+    // Start/stop background music based on UI toggle; defaults to on when toggle is absent
+    bool bgmEnabled = true;
+    if (tw && tw->bgmButton) {
+        bgmEnabled = tw->bgmButton->value() != 0;
+    }
+
+    if (bgmEnabled) {
+        startBgmOnce();
+    } else {
+        stopBgm();
+    }
+
     // Check for Minecraft mode toggle
     static int lastMinecraftState = -1;
     int currentMinecraftState = tw->minecraftButton->value();
@@ -676,6 +777,8 @@ void TrainView::draw() {
         mcChest->draw(glm::vec3(0, -10, 0));
     if (mcFox)
         mcFox->draw(glm::vec3(-20, -10, -20));
+    if (tunnel)
+        tunnel->draw(glm::vec3(80, -30, 80));
     
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
@@ -1935,6 +2038,40 @@ void TrainView::drawTrain(bool doingShadows) {
                         smokeEndDistance);
         mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
                          smokeEndDistance);
+    }
+
+    if(useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+        const float heightOffset = 5.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
+
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+
+        glm::mat4 modelMatrix = basis;
+            
+        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
+    }else if(!useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+        const float heightOffset = 10.0f;
+        Pnt3f raisedPosition = position + up * heightOffset;
+
+        glm::mat4 basis(1.0f);
+        basis[0] = glm::vec4(toGlm(right), 0.0f);
+        basis[1] = glm::vec4(toGlm(up), 0.0f);
+        basis[2] = glm::vec4(toGlm(tangent), 0.0f);
+        basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
+
+        glm::mat4 modelMatrix = basis;
+            
+        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+                        smokeEndDistance);
     }
 }
 

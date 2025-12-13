@@ -111,11 +111,14 @@ public:
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
     Terrain* terrain = nullptr;
+
+    // 3D Models
     McChest* mcChest = nullptr;
     McMinecart* mcMinecart = nullptr;
     McFox* mcFox = nullptr;
     McVillager* mcVillager = nullptr;
-
+    Tunnel* tunnel = nullptr;
+    
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }
 

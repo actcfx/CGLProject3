@@ -83,3 +83,15 @@ public:
         drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
     }
 };
+
+class Tunnel : public ModelActor {
+public:
+    explicit Tunnel(TrainView* owner);
+
+    void draw(const glm::vec3& position) {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, position);
+        model = glm::rotate(model, glm::radians(-45.0f), glm::vec3(0, 1, 0));
+        drawInternal(model, false);
+    }
+};
