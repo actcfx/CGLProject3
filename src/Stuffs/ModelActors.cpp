@@ -1,10 +1,11 @@
 #include "ModelActors.hpp"
 
 #include <glad/glad.h>
+#include <cstdio>
 #include <glm/gtc/matrix_inverse.hpp>
 #include <glm/gtc/matrix_transform.hpp>
-#include <cstdio>
 #include <string>
+
 
 #include "../RenderUtilities/Model.h"
 #include "../RenderUtilities/Shader.h"
@@ -24,9 +25,8 @@ std::string resolveAssetPath(const std::string& relative) {
     if (fileExists(relative))
         return relative;
 
-    const char* prefixes[] = {
-        "./", "../", "../../", "../../../", "../../../../",
-        "../../../../../" };
+    const char* prefixes[] = { "./",        "../",          "../../",
+                               "../../../", "../../../../", "../../../../../" };
     for (const char* prefix : prefixes) {
         std::string candidate = std::string(prefix) + relative;
         if (fileExists(candidate))
@@ -34,7 +34,7 @@ std::string resolveAssetPath(const std::string& relative) {
     }
     return relative;
 }
-}
+}  // namespace
 
 ModelActor::ModelActor(TrainView* view, std::string path, float uniformScale)
     : owner(view), modelRelativePath(std::move(path)), scale(uniformScale) {}
@@ -106,12 +106,14 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
     setMat4("uProjection", projectionMatrix);
     setMat3("uNormalMatrix", normalMatrix);
 
-    const GLint shadowLoc = glGetUniformLocation(shader->Program, "uShadowPass");
+    const GLint shadowLoc =
+        glGetUniformLocation(shader->Program, "uShadowPass");
     if (shadowLoc >= 0) {
         glUniform1i(shadowLoc, doingShadows ? 1 : 0);
     }
 
-    const GLint smokeLoc = glGetUniformLocation(shader->Program, "uSmokeParams");
+    const GLint smokeLoc =
+        glGetUniformLocation(shader->Program, "uSmokeParams");
     if (smokeLoc >= 0) {
         glUniform2fv(smokeLoc, 1, &smokeParams[0]);
     }
@@ -127,20 +129,39 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
         glUniform3fv(camLoc, 1, &cameraPos[0]);
     }
 
+    // Clip plane for water reflection shaders
+    glm::vec4 clipPlane(0.0f);
+    if (glIsEnabled(GL_CLIP_PLANE0)) {
+        double clippedPlaneEquation[4];
+        glGetClipPlane(GL_CLIP_PLANE0, clippedPlaneEquation);
+        clipPlane = glm::vec4((float)clippedPlaneEquation[0], (float)clippedPlaneEquation[1],
+                              (float)clippedPlaneEquation[2], (float)clippedPlaneEquation[3]);
+    }
+
+    // Set clip plane uniform
+    const GLint clipPlaneLoc =
+        glGetUniformLocation(shader->Program, "uClipPlane");
+    if (clipPlaneLoc >= 0) {
+        glUniform4fv(clipPlaneLoc, 1, &clipPlane[0]);
+    }
+
     GLboolean wasCullEnabled = glIsEnabled(GL_CULL_FACE);
     glDisable(GL_CULL_FACE);
     model->Draw(*shader);
-    if (wasCullEnabled) glEnable(GL_CULL_FACE);
+    if (wasCullEnabled)
+        glEnable(GL_CULL_FACE);
     model->Draw(*shader);
 
     glUseProgram(0);
 }
 
 McChest::McChest(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftChest/model/Obj/chest.obj", 5.0f) {}
+    : ModelActor(owner, "./assets/models/minecraftChest/model/Obj/chest.obj",
+                 5.0f) {}
 
 McMinecart::McMinecart(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftMinecart/scene.gltf", 10.0f) {}
+    : ModelActor(owner, "./assets/models/minecraftMinecart/scene.gltf", 10.0f) {
+}
 
 McFox::McFox(TrainView* owner)
     : ModelActor(owner, "./assets/models/minecraftFox/Fox.fbx", 0.03f) {}

@@ -783,7 +783,7 @@ void TrainView::draw() {
                 smokeStartDistance, smokeEndDistance);
 
     // ---------- Draw the terrain ----------
-    terrain->draw(totemViewMatrix, totemProjectionMatrix, totemCameraPos);
+    terrain->draw();
 
     // ---------- Draw the plane ----------
     drawPlane();

@@ -588,16 +588,7 @@ void Water::renderReflection(TrainView* tw) {
 
     // Draw terrain in reflection (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        glEnable(GL_CULL_FACE);
-        glm::mat4 reflectView;
-        glGetFloatv(GL_MODELVIEW_MATRIX, &reflectView[0][0]);
-        glm::mat4 reflectProj;
-        glGetFloatv(GL_PROJECTION_MATRIX, &reflectProj[0][0]);
-        glm::mat4 invView = glm::inverse(reflectView);
-        glm::vec3 reflectCameraPos = glm::vec3(invView[3]);
-        glm::vec4 clipPlane(0.0f, 1.0f, 0.0f, -waterHeight);
-        tw->terrain->draw(reflectView, reflectProj, reflectCameraPos);
-        glDisable(GL_CULL_FACE);
+        tw->terrain->draw();
     }
 
     glEnable(GL_LIGHTING);
@@ -668,14 +659,7 @@ void Water::renderRefraction(TrainView* tw) {
     // Draw terrain in refraction
     // Draw terrain in refraction (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        glm::mat4 refractView;
-        glGetFloatv(GL_MODELVIEW_MATRIX, &refractView[0][0]);
-        glm::mat4 refractProj;
-        glGetFloatv(GL_PROJECTION_MATRIX, &refractProj[0][0]);
-        glm::mat4 invView = glm::inverse(refractView);
-        glm::vec3 refractCameraPos = glm::vec3(invView[3]);
-        glm::vec4 clipPlane(0.0f, -1.0f, 0.0f, waterHeight);
-        tw->terrain->draw(refractView, refractProj, refractCameraPos);
+        tw->terrain->draw();
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points
