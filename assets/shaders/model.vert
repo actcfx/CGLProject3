@@ -8,6 +8,7 @@ uniform mat4 uModel;
 uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat3 uNormalMatrix;
+uniform vec4 uClipPlane;
 
 out vec2 vTexCoord;
 out vec3 vNormal;
@@ -18,5 +19,9 @@ void main() {
     vWorldPos = worldPos.xyz;
     vNormal = normalize(uNormalMatrix * aNormal);
     vTexCoord = aTexCoord;
-    gl_Position = uProjection * uView * worldPos;
+
+    vec4 eyePos = uView * worldPos;
+    gl_ClipDistance[0] = dot(uClipPlane, eyePos);
+
+    gl_Position = uProjection * eyePos;
 }
