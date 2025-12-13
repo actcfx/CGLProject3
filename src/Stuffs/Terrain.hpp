@@ -373,8 +373,7 @@ public:
     }
 
     // Draw using Fixed Function Pipeline
-    void draw(const glm::mat4& view, const glm::mat4& projection,
-              const glm::vec3& cameraPos) {
+    void draw() {
         if (!plane)
             return;
 
