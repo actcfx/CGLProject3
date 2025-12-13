@@ -62,7 +62,7 @@ static bool fileExistsW(const std::wstring& path) {
 }
 
 static std::wstring resolveBgmPath(std::wstring& triedLog) {
-    const std::wstring relWav = L"assets\\bgm\\minecraft.wav";
+    // Requested path for BGM: assets/bgm/minecraft.mp3 (resolved relative to exe/cwd)
     const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
 
     wchar_t exePath[MAX_PATH] = {0};
@@ -81,22 +81,12 @@ static std::wstring resolveBgmPath(std::wstring& triedLog) {
     GetCurrentDirectoryW(MAX_PATH, cwdBuf);
     std::wstring cwd(cwdBuf);
 
-    std::wstring projectRoot = L"E:\\GitHub\\CGLProject3";  // explicit fallback if paths above fail
-
     std::wstring candidates[] = {
-        base.empty() ? L"" : (base + L"\\" + relWav),
-        base.empty() ? L"" : (base + L"\\..\\" + relWav),
-        base.empty() ? L"" : (base + L"\\..\\..\\" + relWav),
-        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relWav),
         base.empty() ? L"" : (base + L"\\" + relMp3),
         base.empty() ? L"" : (base + L"\\..\\" + relMp3),
         base.empty() ? L"" : (base + L"\\..\\..\\" + relMp3),
         base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relMp3),
-        cwd.empty() ? L"" : (cwd + L"\\" + relWav),
         cwd.empty() ? L"" : (cwd + L"\\" + relMp3),
-        projectRoot.empty() ? L"" : (projectRoot + L"\\" + relWav),
-        projectRoot.empty() ? L"" : (projectRoot + L"\\" + relMp3),
-        relWav,
         relMp3
     };
 
@@ -123,13 +113,39 @@ static void startBgmOnce() {
         return;
     }
 
-    BOOL ok = PlaySoundW(path.c_str(), NULL,
-                         SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
-    if (ok) {
+    bool isMp3 = false;
+    if (path.size() >= 4) {
+        std::wstring ext = path.substr(path.size() - 4);
+        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        isMp3 = (ext == L".mp3");
+    }
+
+    if (isMp3) {
+        mciSendStringW(L"close bgm", NULL, 0, NULL);
+        std::wstring openCmd = L"open \"" + path + L"\" type mpegvideo alias bgm";
+        MCIERROR openErr = mciSendStringW(openCmd.c_str(), NULL, 0, NULL);
+        if (openErr != 0) {
+            std::cerr << "MCI open failed for mp3: " << std::string(path.begin(), path.end())
+                      << " error code: " << openErr << std::endl;
+            return;
+        }
+        MCIERROR playErr = mciSendStringW(L"play bgm repeat", NULL, 0, NULL);
+        if (playErr != 0) {
+            std::cerr << "MCI play failed for mp3: " << std::string(path.begin(), path.end())
+                      << " error code: " << playErr << std::endl;
+            mciSendStringW(L"close bgm", NULL, 0, NULL);
+            return;
+        }
         g_bgmStarted = true;
     } else {
-        std::cerr << "PlaySound failed (ensure 16-bit PCM WAV if wav; mp3 not supported by PlaySound): "
-                  << std::string(path.begin(), path.end()) << std::endl;
+        BOOL ok = PlaySoundW(path.c_str(), NULL,
+                             SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
+        if (ok) {
+            g_bgmStarted = true;
+        } else {
+            std::cerr << "PlaySound failed (ensure 16-bit PCM WAV 44.1kHz; mp3 uses MCI path): "
+                      << std::string(path.begin(), path.end()) << std::endl;
+        }
     }
 }
 
@@ -771,14 +787,6 @@ void TrainView::draw() {
 
     // ---------- Draw the plane ----------
     drawPlane();
-
-    // ---------- Draw Minecraft Models ----------
-    if (mcChest)
-        mcChest->draw(glm::vec3(0, -10, 0));
-    if (mcFox)
-        mcFox->draw(glm::vec3(-20, -10, -20));
-    if (tunnel)
-        tunnel->draw(glm::vec3(80, -30, 80));
     
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
@@ -958,6 +966,14 @@ void TrainView::drawStuff(bool doingShadows) {
 
     // draw the oden
     drawOden(doingShadows);
+
+    // ---------- Draw Minecraft Models ----------
+    if (mcChest)
+        mcChest->draw(glm::vec3(0, -10, 0));
+    if (mcFox)
+        mcFox->draw(glm::vec3(-20, -10, -20));
+    if (tunnel)
+        tunnel->draw(glm::vec3(80, -30, 80));
 
 #ifdef EXAMPLE_SOLUTION
     // don't draw the train if you're looking out the front window
