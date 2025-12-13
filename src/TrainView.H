@@ -168,6 +168,6 @@ private:
 
     void initFrameBufferShader();
 
-    float smokeStartDistance = 120.0f;
-    float smokeEndDistance = 500.0f;
+    float smokeStartDistance = 100.0f;
+    float smokeEndDistance = 800.0f;
 };
