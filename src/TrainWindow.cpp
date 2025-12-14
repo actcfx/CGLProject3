@@ -288,7 +288,7 @@ void TrainWindow::advanceTrain(float dir)
         const float gravityGain = 0.12f;
         const float damping = 0.08f;
         const float minScale = 0.1f;
-        const float maxScale = 6.0f;
+        const float maxScale = 10.0f;
 
         // Update the physics speed scale based on the slope and gravity
         physicsSpeedScale += (-signedSlope) * gravityGain;

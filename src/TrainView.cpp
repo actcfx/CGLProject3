@@ -61,6 +61,7 @@ static bool fileExistsW(const std::wstring& path) {
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+// Try to resolve the BGM path by checking multiple candidate locations.
 static std::wstring resolveBgmPath(std::wstring& triedLog) {
     // Requested path for BGM: assets/bgm/minecraft.mp3 (resolved relative to exe/cwd)
     const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
