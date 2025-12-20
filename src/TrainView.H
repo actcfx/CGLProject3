@@ -65,6 +65,7 @@ class ControlPoint;
 #include "Stuffs/ModelActors.hpp"
 
 class TotemOfUndying;
+class SubdivisionSphere;
 
 
 class TrainView : public Fl_Gl_Window {
@@ -111,6 +112,8 @@ public:
     Skybox* skybox = nullptr;
     TotemOfUndying* totem = nullptr;
     Terrain* terrain = nullptr;
+    SubdivisionSphere* subdivisionSphere = nullptr;
+    int currentSphereRecursion = -1;
 
     // 3D Models
     McChest* mcChest = nullptr;

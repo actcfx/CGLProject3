@@ -62,6 +62,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         // to make resizing work better, put all the widgets in a group
         widgets = new Fl_Group(600, 5, 190, 590);
         widgets->begin();
+        sphereRecursionSlider = nullptr;
 
         runButton = new Fl_Button(605, pty, 60, 20, "Run");
         togglify(runButton);
@@ -166,6 +167,17 @@ TrainWindow::TrainWindow(const int x, const int y)
         tensionSlider->align(FL_ALIGN_LEFT);
         tensionSlider->type(FL_HORIZONTAL);
         tensionSlider->callback((Fl_Callback*)damageCB, this);
+
+        pty += 30;
+
+        sphereRecursionSlider =
+            new Fl_Value_Slider(665, pty, 130, 20, "Subdiv");
+        sphereRecursionSlider->range(0, 6);
+        sphereRecursionSlider->step(1);
+        sphereRecursionSlider->value(3);
+        sphereRecursionSlider->align(FL_ALIGN_LEFT);
+        sphereRecursionSlider->type(FL_HORIZONTAL);
+        sphereRecursionSlider->callback((Fl_Callback*)damageCB, this);
 
         pty += 30;
 

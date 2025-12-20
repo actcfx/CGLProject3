@@ -110,6 +110,8 @@ public:
 
     Fl_Value_Slider* reflectRefractSlider;
 
+    Fl_Value_Slider* sphereRecursionSlider;
+
     Fl_Button* physicsButton;
 
     Fl_Button* minecraftButton;

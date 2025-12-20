@@ -43,6 +43,7 @@ references)
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
 #include "Stuffs/totemOfUndying.hpp"
+#include "Stuffs/SubdivisionSphere.hpp"
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -180,6 +181,10 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcFox = new McFox(this);
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
+    subdivisionSphere = new SubdivisionSphere(6, 35.0f);
+    subdivisionSphere->setCenter(glm::vec3(60.0f, 80.0f, -40.0f));
+    subdivisionSphere->setColor(glm::vec3(0.85f, 0.75f, 1.0f));
+    currentSphereRecursion = 6;
 }
 
 //************************************************************************
@@ -1060,6 +1065,20 @@ void TrainView::drawStuff(bool doingShadows) {
 
     // draw the oden
     drawOden(doingShadows);
+
+    if (subdivisionSphere) {
+        if (tw && tw->sphereRecursionSlider) {
+            const int sliderRecursion = static_cast<int>(std::round(
+                tw->sphereRecursionSlider->value()));
+            const int clampedRecursion =
+                glm::clamp(sliderRecursion, 0, 6);
+            if (clampedRecursion != currentSphereRecursion) {
+                subdivisionSphere->setRecursionLevel(clampedRecursion);
+                currentSphereRecursion = clampedRecursion;
+            }
+        }
+        subdivisionSphere->draw(doingShadows);
+    }
 
     // ---------- Draw Minecraft Models ----------
     if (mcChest)
