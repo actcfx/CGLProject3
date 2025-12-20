@@ -434,6 +434,10 @@ void TrainView::initFrameBufferShader() {
     if (!paintShader)
         paintShader = new Shader("./shaders/paint.vert", nullptr, nullptr,
                                  nullptr, "./shaders/paint.frag");
+    if (!crosshatchShader)
+        crosshatchShader = new Shader("./shaders/crosshatch.vert", nullptr,
+                                      nullptr, nullptr,
+                                      "./shaders/crosshatch.frag");
 
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
@@ -706,8 +710,9 @@ void TrainView::draw() {
     const bool enablePixelize = tw->pixelizeButton->value() != 0;
     const bool enableToon = tw->toonButton->value() != 0;
     const bool enablePaint = tw->paintButton->value() != 0;
+    const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
     const bool postProcessEnabled =
-        enablePixelize || enableToon || enablePaint;
+        enablePixelize || enableToon || enablePaint || enableCrosshatch;
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
@@ -806,7 +811,7 @@ void TrainView::draw() {
         FrameBuffer* writeBuffer = tempFrameBuffer;
         int remainingEffects =
             (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-            (enablePixelize ? 1 : 0);
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                        const std::function<void()>& setUniforms,
@@ -850,6 +855,26 @@ void TrainView::draw() {
                         (float)h());
                     glUniform1i(glGetUniformLocation(toonShader->Program,
                                                      "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableCrosshatch) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                crosshatchShader,
+                [&]() {
+                    glUniform1f(glGetUniformLocation(
+                                    crosshatchShader->Program, "width"),
+                                (float)w());
+                    glUniform1f(glGetUniformLocation(
+                                    crosshatchShader->Program, "height"),
+                                (float)h());
+                    glUniform1i(glGetUniformLocation(
+                                    crosshatchShader->Program,
+                                    "screenTexture"),
                                 0);
                 },
                 isLast);

@@ -169,6 +169,7 @@ private:
     Shader* pixelShader = nullptr;
     Shader* toonShader = nullptr;
     Shader* paintShader = nullptr;
+    Shader* crosshatchShader = nullptr;
 
     void initFrameBufferShader();
 

@@ -64,7 +64,7 @@ void main()
 
     // Gentle vignette to keep focus toward the center
     float dist = length(TexCoords - 0.5) * 1.35;
-    float vignette = 1.0 - smoothstep(0.55, 0.95, dist);
+    float vignette = 1.0;
     vec3 painted = quantized * vignette;
 
     // Darken along edges for an inked look

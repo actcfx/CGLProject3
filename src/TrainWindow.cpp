@@ -195,7 +195,12 @@ TrainWindow::TrainWindow(const int x, const int y)
         paintButton = new Fl_Button(605, pty, 60, 20, "Paint");
         togglify(paintButton, 0);
 
-        smokeButton = new Fl_Button(675, pty, 60, 20, "Smoke");
+        crosshatchButton = new Fl_Button(675, pty, 80, 20, "Hatch");
+        togglify(crosshatchButton, 0);
+
+        pty += 25;
+
+        smokeButton = new Fl_Button(605, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
 
         pty += 30;
