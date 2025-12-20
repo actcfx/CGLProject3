@@ -438,6 +438,9 @@ void TrainView::initFrameBufferShader() {
         crosshatchShader = new Shader("./shaders/crosshatch.vert", nullptr,
                                       nullptr, nullptr,
                                       "./shaders/crosshatch.frag");
+    if (!stippleShader)
+        stippleShader = new Shader("./shaders/stipple.vert", nullptr, nullptr,
+                                   nullptr, "./shaders/stipple.frag");
 
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
@@ -711,8 +714,10 @@ void TrainView::draw() {
     const bool enableToon = tw->toonButton->value() != 0;
     const bool enablePaint = tw->paintButton->value() != 0;
     const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
+    const bool enableStipple = tw->stippleButton->value() != 0;
     const bool postProcessEnabled =
-        enablePixelize || enableToon || enablePaint || enableCrosshatch;
+        enablePixelize || enableToon || enablePaint || enableCrosshatch ||
+        enableStipple;
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
@@ -811,7 +816,8 @@ void TrainView::draw() {
         FrameBuffer* writeBuffer = tempFrameBuffer;
         int remainingEffects =
             (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0);
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
+            (enableStipple ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                        const std::function<void()>& setUniforms,
@@ -876,6 +882,28 @@ void TrainView::draw() {
                                     crosshatchShader->Program,
                                     "screenTexture"),
                                 0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableStipple) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                stippleShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "height"),
+                        (float)h());
+                    glUniform1i(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "screenTexture"),
+                        0);
                 },
                 isLast);
             --remainingEffects;

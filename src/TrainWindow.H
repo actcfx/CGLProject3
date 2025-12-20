@@ -106,6 +106,8 @@ public:
 
     Fl_Button* crosshatchButton;
 
+    Fl_Button* stippleButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Button* physicsButton;

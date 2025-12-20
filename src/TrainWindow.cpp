@@ -203,6 +203,9 @@ TrainWindow::TrainWindow(const int x, const int y)
         smokeButton = new Fl_Button(605, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
 
+        stippleButton = new Fl_Button(675, pty, 70, 20, "Stipple");
+        togglify(stippleButton, 0);
+
         pty += 30;
 
         // ---------- Physics Button ----------
