@@ -183,14 +183,19 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 110;
 
-        // ---------- Pixelization and Toon Shading ----------
+        // ---------- Pixelization, Toon, Paint, Smoke ----------
         pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
         togglify(pixelizeButton, 0);
 
-        toonButton = new Fl_Button(670, pty, 60, 20, "Toon");
+        toonButton = new Fl_Button(675, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
 
-        smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
+        pty += 25;
+
+        paintButton = new Fl_Button(605, pty, 60, 20, "Paint");
+        togglify(paintButton, 0);
+
+        smokeButton = new Fl_Button(675, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
 
         pty += 30;

@@ -25,6 +25,7 @@ references)
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -430,6 +431,9 @@ void TrainView::initFrameBufferShader() {
     if (!toonShader)
         toonShader = new Shader("./shaders/toon.vert", nullptr, nullptr,
                                 nullptr, "./shaders/toon.frag");
+    if (!paintShader)
+        paintShader = new Shader("./shaders/paint.vert", nullptr, nullptr,
+                                 nullptr, "./shaders/paint.frag");
 
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
@@ -699,6 +703,12 @@ void TrainView::draw() {
     mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
     tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
 
+    const bool enablePixelize = tw->pixelizeButton->value() != 0;
+    const bool enableToon = tw->toonButton->value() != 0;
+    const bool enablePaint = tw->paintButton->value() != 0;
+    const bool postProcessEnabled =
+        enablePixelize || enableToon || enablePaint;
+
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
@@ -712,7 +722,7 @@ void TrainView::draw() {
     glEnable(GL_DEPTH_TEST);
 
     // ---------- Bind framebuffer ----------
-    if (tw->pixelizeButton->value() || tw->toonButton->value()) {
+    if (postProcessEnabled) {
         mainFrameBuffer->bind();
     } else {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -788,77 +798,107 @@ void TrainView::draw() {
 
     // ---------- Draw the plane ----------
     drawPlane();
-    
+
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
-    if (tw->toonButton->value() && tw->pixelizeButton->value()) {
-        // Step A: Apply Toon Shader (Main -> Temp)
-        tempFrameBuffer->bind();  // Draw into temporary buffer
-        glClear(GL_COLOR_BUFFER_BIT);
+    if (postProcessEnabled) {
+        FrameBuffer* readBuffer = mainFrameBuffer;
+        FrameBuffer* writeBuffer = tempFrameBuffer;
+        int remainingEffects =
+            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+            (enablePixelize ? 1 : 0);
 
-        toonShader->Use();
-        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
-                    0);
+        auto applyEffect = [&](Shader* effectShader,
+                       const std::function<void()>& setUniforms,
+                       bool toScreen) {
+            if (!effectShader) {
+                return;
+            }
 
-        mainFrameBuffer->bindTexture(0);  // Read from Main
-        mainFrameBuffer->drawQuad();
+            if (toScreen) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, w(), h());
+            } else {
+                writeBuffer->bind();
+                glViewport(0, 0, this->pixel_w(), this->pixel_h());
+            }
 
-        // Step B: Apply Pixel Shader (Temp -> Screen)
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Back to screen
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT);
+            effectShader->Use();
+            setUniforms();
 
-        pixelShader->Use();
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    5.0f);
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
-                    0);
+            readBuffer->bindTexture(0);
+            readBuffer->drawQuad();
 
-        tempFrameBuffer->bindTexture(
-            0);  // Read from Temp (which has the Toon result)
-        tempFrameBuffer->drawQuad();
-    } else if (tw->pixelizeButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+            if (!toScreen) {
+                FrameBuffer* temp = readBuffer;
+                readBuffer = writeBuffer;
+                writeBuffer = temp;
+            }
+        };
 
-        pixelShader->Use();
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    5.0f);
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
-                    0);
+        if (enableToon) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                toonShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(toonShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(toonShader->Program, "height"),
+                        (float)h());
+                    glUniform1i(glGetUniformLocation(toonShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
 
-        mainFrameBuffer->bindTexture(0);
-        mainFrameBuffer->drawQuad();
-    } else if (tw->toonButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (enablePaint) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                paintShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(paintShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(paintShader->Program, "height"),
+                        (float)h());
+                    glUniform1i(glGetUniformLocation(paintShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
 
-        toonShader->Use();
-        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
-                    0);
-
-        mainFrameBuffer->bindTexture(0);
-        mainFrameBuffer->drawQuad();
+        if (enablePixelize) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                pixelShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(pixelShader->Program,
+                                             "pixelSize"),
+                        5.0f);
+                    glUniform1f(glGetUniformLocation(pixelShader->Program,
+                                                     "screenWidth"),
+                                (float)w());
+                    glUniform1f(glGetUniformLocation(pixelShader->Program,
+                                                     "screenHeight"),
+                                (float)h());
+                    glUniform1i(glGetUniformLocation(pixelShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
     }
-    
+
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);

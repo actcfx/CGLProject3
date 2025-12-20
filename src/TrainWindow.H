@@ -102,6 +102,8 @@ public:
 
     Fl_Button* toonButton;
 
+    Fl_Button* paintButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Button* physicsButton;
