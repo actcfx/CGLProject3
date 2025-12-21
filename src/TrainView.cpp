@@ -25,6 +25,7 @@ references)
 #include <algorithm>
 #include <chrono>
 #include <cmath>
+#include <functional>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -42,6 +43,7 @@ references)
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
 #include "Stuffs/totemOfUndying.hpp"
+#include "Stuffs/SubdivisionSphere.hpp"
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -61,6 +63,7 @@ static bool fileExistsW(const std::wstring& path) {
     return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
+// Try to resolve the BGM path by checking multiple candidate locations.
 static std::wstring resolveBgmPath(std::wstring& triedLog) {
     // Requested path for BGM: assets/bgm/minecraft.mp3 (resolved relative to exe/cwd)
     const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
@@ -178,6 +181,10 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcFox = new McFox(this);
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
+    subdivisionSphere = new SubdivisionSphere(6, 35.0f);
+    subdivisionSphere->setCenter(glm::vec3(60.0f, 80.0f, -40.0f));
+    subdivisionSphere->setColor(glm::vec3(0.85f, 0.75f, 1.0f));
+    currentSphereRecursion = 6;
 }
 
 //************************************************************************
@@ -429,6 +436,16 @@ void TrainView::initFrameBufferShader() {
     if (!toonShader)
         toonShader = new Shader("./shaders/toon.vert", nullptr, nullptr,
                                 nullptr, "./shaders/toon.frag");
+    if (!paintShader)
+        paintShader = new Shader("./shaders/paint.vert", nullptr, nullptr,
+                                 nullptr, "./shaders/paint.frag");
+    if (!crosshatchShader)
+        crosshatchShader = new Shader("./shaders/crosshatch.vert", nullptr,
+                                      nullptr, nullptr,
+                                      "./shaders/crosshatch.frag");
+    if (!stippleShader)
+        stippleShader = new Shader("./shaders/stipple.vert", nullptr, nullptr,
+                                   nullptr, "./shaders/stipple.frag");
 
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
@@ -698,6 +715,15 @@ void TrainView::draw() {
     mainFrameBuffer->resize(this->pixel_w(), this->pixel_h());
     tempFrameBuffer->resize(this->pixel_w(), this->pixel_h());
 
+    const bool enablePixelize = tw->pixelizeButton->value() != 0;
+    const bool enableToon = tw->toonButton->value() != 0;
+    const bool enablePaint = tw->paintButton->value() != 0;
+    const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
+    const bool enableStipple = tw->stippleButton->value() != 0;
+    const bool postProcessEnabled =
+        enablePixelize || enableToon || enablePaint || enableCrosshatch ||
+        enableStipple;
+
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
@@ -711,7 +737,7 @@ void TrainView::draw() {
     glEnable(GL_DEPTH_TEST);
 
     // ---------- Bind framebuffer ----------
-    if (tw->pixelizeButton->value() || tw->toonButton->value()) {
+    if (postProcessEnabled) {
         mainFrameBuffer->bind();
     } else {
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -787,77 +813,150 @@ void TrainView::draw() {
 
     // ---------- Draw the plane ----------
     drawPlane();
-    
+
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
-    if (tw->toonButton->value() && tw->pixelizeButton->value()) {
-        // Step A: Apply Toon Shader (Main -> Temp)
-        tempFrameBuffer->bind();  // Draw into temporary buffer
-        glClear(GL_COLOR_BUFFER_BIT);
+    if (postProcessEnabled) {
+        FrameBuffer* readBuffer = mainFrameBuffer;
+        FrameBuffer* writeBuffer = tempFrameBuffer;
+        int remainingEffects =
+            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
+            (enableStipple ? 1 : 0);
 
-        toonShader->Use();
-        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
-                    0);
+        auto applyEffect = [&](Shader* effectShader,
+                       const std::function<void()>& setUniforms,
+                       bool toScreen) {
+            if (!effectShader) {
+                return;
+            }
 
-        mainFrameBuffer->bindTexture(0);  // Read from Main
-        mainFrameBuffer->drawQuad();
+            if (toScreen) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, w(), h());
+            } else {
+                writeBuffer->bind();
+                glViewport(0, 0, this->pixel_w(), this->pixel_h());
+            }
 
-        // Step B: Apply Pixel Shader (Temp -> Screen)
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);  // Back to screen
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+            glClear(GL_COLOR_BUFFER_BIT);
+            effectShader->Use();
+            setUniforms();
 
-        pixelShader->Use();
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    5.0f);
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
-                    0);
+            readBuffer->bindTexture(0);
+            readBuffer->drawQuad();
 
-        tempFrameBuffer->bindTexture(
-            0);  // Read from Temp (which has the Toon result)
-        tempFrameBuffer->drawQuad();
-    } else if (tw->pixelizeButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+            if (!toScreen) {
+                FrameBuffer* temp = readBuffer;
+                readBuffer = writeBuffer;
+                writeBuffer = temp;
+            }
+        };
 
-        pixelShader->Use();
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "pixelSize"),
-                    5.0f);
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenWidth"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(pixelShader->Program, "screenHeight"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(pixelShader->Program, "screenTexture"),
-                    0);
+        if (enableToon) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                toonShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(toonShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(toonShader->Program, "height"),
+                        (float)h());
+                    glUniform1i(glGetUniformLocation(toonShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
 
-        mainFrameBuffer->bindTexture(0);
-        mainFrameBuffer->drawQuad();
-    } else if (tw->toonButton->value()) {
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        glViewport(0, 0, w(), h());
-        glClear(GL_COLOR_BUFFER_BIT);
+        if (enableCrosshatch) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                crosshatchShader,
+                [&]() {
+                    glUniform1f(glGetUniformLocation(
+                                    crosshatchShader->Program, "width"),
+                                (float)w());
+                    glUniform1f(glGetUniformLocation(
+                                    crosshatchShader->Program, "height"),
+                                (float)h());
+                    glUniform1i(glGetUniformLocation(
+                                    crosshatchShader->Program,
+                                    "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
 
-        toonShader->Use();
-        glUniform1f(glGetUniformLocation(toonShader->Program, "width"),
-                    (float)w());
-        glUniform1f(glGetUniformLocation(toonShader->Program, "height"),
-                    (float)h());
-        glUniform1i(glGetUniformLocation(toonShader->Program, "screenTexture"),
-                    0);
+        if (enableStipple) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                stippleShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "height"),
+                        (float)h());
+                    glUniform1i(
+                        glGetUniformLocation(stippleShader->Program,
+                                             "screenTexture"),
+                        0);
+                },
+                isLast);
+            --remainingEffects;
+        }
 
-        mainFrameBuffer->bindTexture(0);
-        mainFrameBuffer->drawQuad();
+        if (enablePaint) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                paintShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(paintShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(paintShader->Program, "height"),
+                        (float)h());
+                    glUniform1i(glGetUniformLocation(paintShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enablePixelize) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                pixelShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(pixelShader->Program,
+                                             "pixelSize"),
+                        5.0f);
+                    glUniform1f(glGetUniformLocation(pixelShader->Program,
+                                                     "screenWidth"),
+                                (float)w());
+                    glUniform1f(glGetUniformLocation(pixelShader->Program,
+                                                     "screenHeight"),
+                                (float)h());
+                    glUniform1i(glGetUniformLocation(pixelShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
     }
-    
+
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -966,6 +1065,20 @@ void TrainView::drawStuff(bool doingShadows) {
 
     // draw the oden
     drawOden(doingShadows);
+
+    if (subdivisionSphere) {
+        if (tw && tw->sphereRecursionSlider) {
+            const int sliderRecursion = static_cast<int>(std::round(
+                tw->sphereRecursionSlider->value()));
+            const int clampedRecursion =
+                glm::clamp(sliderRecursion, 0, 6);
+            if (clampedRecursion != currentSphereRecursion) {
+                subdivisionSphere->setRecursionLevel(clampedRecursion);
+                currentSphereRecursion = clampedRecursion;
+            }
+        }
+        subdivisionSphere->draw(doingShadows);
+    }
 
     // ---------- Draw Minecraft Models ----------
     if (mcChest)

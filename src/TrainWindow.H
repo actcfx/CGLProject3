@@ -102,7 +102,15 @@ public:
 
     Fl_Button* toonButton;
 
+    Fl_Button* paintButton;
+
+    Fl_Button* crosshatchButton;
+
+    Fl_Button* stippleButton;
+
     Fl_Value_Slider* reflectRefractSlider;
+
+    Fl_Value_Slider* sphereRecursionSlider;
 
     Fl_Button* physicsButton;
 

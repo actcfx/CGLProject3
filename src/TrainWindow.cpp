@@ -62,6 +62,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         // to make resizing work better, put all the widgets in a group
         widgets = new Fl_Group(600, 5, 190, 590);
         widgets->begin();
+        sphereRecursionSlider = nullptr;
 
         runButton = new Fl_Button(605, pty, 60, 20, "Run");
         togglify(runButton);
@@ -115,7 +116,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         splineBrowser->select(2);
 
         bgmButton = new Fl_Button(735, pty, 60, 20, "BGM");
-        togglify(bgmButton, 1);
+        togglify(bgmButton, 0);
 
         pty += 110;
 
@@ -169,6 +170,17 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 30;
 
+        sphereRecursionSlider =
+            new Fl_Value_Slider(665, pty, 130, 20, "Subdiv");
+        sphereRecursionSlider->range(0, 6);
+        sphereRecursionSlider->step(1);
+        sphereRecursionSlider->value(3);
+        sphereRecursionSlider->align(FL_ALIGN_LEFT);
+        sphereRecursionSlider->type(FL_HORIZONTAL);
+        sphereRecursionSlider->callback((Fl_Callback*)damageCB, this);
+
+        pty += 30;
+
         // ---------- Shader Browser ----------
         shaderBrowser = new Fl_Browser(605, pty, 120, 75, "Shader");
         shaderBrowser->type(2);  // select
@@ -183,12 +195,23 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 110;
 
-        // ---------- Pixelization and Toon Shading ----------
-        pixelizeButton = new Fl_Button(605, pty, 60, 20, "Pixelize");
-        togglify(pixelizeButton, 0);
+        // ---------- Pixelization, Toon, Paint, Smoke ----------
+        paintButton = new Fl_Button(605, pty, 60, 20, "Paint");
+        togglify(paintButton, 0);
 
         toonButton = new Fl_Button(670, pty, 60, 20, "Toon");
         togglify(toonButton, 0);
+
+        pixelizeButton = new Fl_Button(735, pty, 60, 20, "Pixelize");
+        togglify(pixelizeButton, 0);
+
+        pty += 25;
+
+        crosshatchButton = new Fl_Button(605, pty, 60, 20, "Hatch");
+        togglify(crosshatchButton, 0);
+
+        stippleButton = new Fl_Button(670, pty, 60, 20, "Stipple");
+        togglify(stippleButton, 0);
 
         smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
@@ -200,13 +223,15 @@ TrainWindow::TrainWindow(const int x, const int y)
         togglify(physicsButton, 0);
 
         // ---------- Minecraft Button ----------
-        minecraftButton = new Fl_Button(675, pty, 60, 20, "Minecraft");
+        minecraftButton = new Fl_Button(670, pty, 60, 20, "Minecraft");
         togglify(minecraftButton, 1);
 
         pty += 30;
-// ---------- Reflection/Refraction Ratio Slider ----------
+
+
+// (deleted) ---------- Reflection/Refraction Ratio Slider ----------
         reflectRefractSlider =
-            new Fl_Value_Slider(700, pty, 95, 20, "Reflect/Refract");
+            new Fl_Value_Slider(700, pty, 0, 0, "");
         reflectRefractSlider->range(0.0, 1.0);
         reflectRefractSlider->value(0.7);
         reflectRefractSlider->align(FL_ALIGN_LEFT);
@@ -288,7 +313,7 @@ void TrainWindow::advanceTrain(float dir)
         const float gravityGain = 0.12f;
         const float damping = 0.08f;
         const float minScale = 0.1f;
-        const float maxScale = 6.0f;
+        const float maxScale = 10.0f;
 
         // Update the physics speed scale based on the slope and gravity
         physicsSpeedScale += (-signedSlope) * gravityGain;

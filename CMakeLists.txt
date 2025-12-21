@@ -43,6 +43,8 @@ add_executable(RollerCoasters
     ${SRC_DIR}Stuffs/Terrain.hpp
     ${SRC_DIR}Stuffs/ModelActors.hpp
     ${SRC_DIR}Stuffs/ModelActors.cpp
+    ${SRC_DIR}Stuffs/SubdivisionSphere.hpp
+    ${SRC_DIR}Stuffs/SubdivisionSphere.cpp
     ${SRC_DIR}Stuffs/Terrain.hpp)
 
 add_library(Utilities
