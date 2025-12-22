@@ -27,6 +27,7 @@ references)
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
 
@@ -182,6 +183,17 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
     ghast = new Ghast(this);
+    ghastPosition = glm::vec3(-80.0f, 100.0f, 80.0f);
+    const glm::vec3 ghastRange(30.0f, 20.0f, 30.0f);
+    ghastMinBounds = ghastPosition - ghastRange;
+    ghastMaxBounds = ghastPosition + ghastRange;
+    ghastDirection = sampleGhastDirection();
+    glm::vec3 initialDir = ghastDirection;
+    float horizLen = std::sqrt(initialDir.x * initialDir.x + initialDir.z * initialDir.z);
+    if (horizLen > 1e-3f)
+        ghastYaw = std::atan2(initialDir.x, initialDir.z);
+    ghastTimeLeft = ghastModeDuration;
+    ghastLastUpdate = std::chrono::steady_clock::now();
     subdivisionSphere = new SubdivisionSphere(6, 35.0f);
     subdivisionSphere->setCenter(glm::vec3(60.0f, 80.0f, -40.0f));
     subdivisionSphere->setColor(glm::vec3(0.85f, 0.75f, 1.0f));
@@ -1030,6 +1042,72 @@ void TrainView::setProjection()
 #endif
 }
 
+glm::vec3 TrainView::sampleGhastDirection() {
+    static std::mt19937 rng { std::random_device {}() };
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    glm::vec3 dir;
+    do {
+        dir = glm::vec3(dist(rng), dist(rng) * 0.25f, dist(rng));
+    } while (glm::dot(dir, dir) < 1e-3f);
+    return glm::normalize(dir);
+}
+
+void TrainView::updateGhastMotion() {
+    if (!ghast)
+        return;
+
+    const auto now = std::chrono::steady_clock::now();
+    if (ghastLastUpdate.time_since_epoch().count() == 0) {
+        ghastLastUpdate = now;
+        ghastDirection = sampleGhastDirection();
+        ghastTimeLeft = ghastModeDuration;
+        return;
+    }
+
+    float dt = std::chrono::duration<float>(now - ghastLastUpdate).count();
+    ghastLastUpdate = now;
+
+    dt = std::min(dt, 0.2f);
+
+    // Update facing with limited turn rate so direction changes feel slower.
+    glm::vec3 dir = ghastDirection;
+    float horizLen = std::sqrt(dir.x * dir.x + dir.z * dir.z);
+    float targetYaw = (horizLen > 1e-4f) ? std::atan2(dir.x, dir.z) : ghastYaw;
+    auto wrapPi = [](float a) {
+        const float pi = static_cast<float>(M_PI);
+        const float twoPi = 2.0f * pi;
+        while (a > pi) a -= twoPi;
+        while (a < -pi) a += twoPi;
+        return a;
+    };
+    float delta = wrapPi(targetYaw - ghastYaw);
+    float maxStep = glm::radians(ghastTurnRateDeg) * dt;
+    delta = glm::clamp(delta, -maxStep, maxStep);
+    ghastYaw = wrapPi(ghastYaw + delta);
+
+    float step = ghastSpeed * dt;
+    glm::vec3 proposed = ghastPosition + dir * step;
+
+    auto clampToBounds = [&](float v, float minV, float maxV) {
+        return std::max(minV, std::min(maxV, v));
+    };
+
+    glm::vec3 clamped = proposed;
+    clamped.x = clampToBounds(clamped.x, ghastMinBounds.x, ghastMaxBounds.x);
+    clamped.y = clampToBounds(clamped.y, ghastMinBounds.y, ghastMaxBounds.y);
+    clamped.z = clampToBounds(clamped.z, ghastMinBounds.z, ghastMaxBounds.z);
+
+    glm::vec3 diff = glm::abs(clamped - proposed);
+    bool hitBoundary = (diff.x > 1e-5f) || (diff.y > 1e-5f) || (diff.z > 1e-5f);
+    ghastPosition = clamped;
+
+    ghastTimeLeft -= dt;
+    if (hitBoundary || ghastTimeLeft <= 0.0f) {
+        ghastDirection = sampleGhastDirection();
+        ghastTimeLeft = ghastModeDuration;
+    }
+}
+
 //************************************************************************
 //
 // * this draws all of the stuff in the world
@@ -1088,8 +1166,11 @@ void TrainView::drawStuff(bool doingShadows) {
         mcFox->draw(glm::vec3(-20, -10, -20));
     if (tunnel)
         tunnel->draw(glm::vec3(80, -30, 80));
-    if (ghast)
-        ghast->draw(glm::vec3(-80, 100, 80));
+    if (ghast) {
+        if (!doingShadows)
+            updateGhastMotion();
+        ghast->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
+    }
 
 #ifdef EXAMPLE_SOLUTION
     // don't draw the train if you're looking out the front window

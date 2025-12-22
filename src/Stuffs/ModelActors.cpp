@@ -173,4 +173,4 @@ Tunnel::Tunnel(TrainView* owner)
     : ModelActor(owner, "./assets/models/tunnel/scene.gltf", 0.2f) {}
 
 Ghast::Ghast(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftGhast/scene.gltf", 1.0f) {}
+    : ModelActor(owner, "./assets/models/minecraftGhast/ghast.obj", 20.0f) {}

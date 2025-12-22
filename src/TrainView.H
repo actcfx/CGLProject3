@@ -33,6 +33,10 @@ class ControlPoint;
 
 #include "Utilities/Pnt3f.H"
 
+#include <chrono>
+#include <glm/vec3.hpp>
+#include <glm/gtc/constants.hpp>
+
 //#######################################################################
 // TODO
 // You might change the TrainView in order to add different objects to
@@ -87,6 +91,7 @@ public:
     void drawTrack(bool doingShadows);
     void drawTrain(bool doingShadows);
     void drawOden(bool doingShadows);
+
 
     // setup the projection - assuming that the projection stack has been
     // cleared for you
@@ -180,4 +185,20 @@ private:
 
     float smokeStartDistance = 100.0f;
     float smokeEndDistance = 800.0f;
+
+    // ---------- Ghast motion ----------
+    glm::vec3 ghastPosition { -80.0f, 100.0f, 80.0f };
+    glm::vec3 ghastDirection { 1.0f, 0.0f, 0.0f };
+    glm::vec3 ghastMinBounds { -110.0f, 70.0f, 50.0f };
+    glm::vec3 ghastMaxBounds { -50.0f, 130.0f, 110.0f };
+    float ghastSpeed = 35.0f;
+    float ghastTurnRateDeg = 20.0f;  // degrees per second
+    float ghastYaw = glm::half_pi<float>();
+    float ghastBaseYawOffset = glm::half_pi<float>();
+    float ghastModeDuration = 3.0f;
+    float ghastTimeLeft = 0.0f;
+    std::chrono::steady_clock::time_point ghastLastUpdate {};
+
+    void updateGhastMotion();
+    glm::vec3 sampleGhastDirection();
 };
