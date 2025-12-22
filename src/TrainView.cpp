@@ -181,6 +181,7 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcFox = new McFox(this);
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
+    ghast = new Ghast(this);
     subdivisionSphere = new SubdivisionSphere(6, 35.0f);
     subdivisionSphere->setCenter(glm::vec3(60.0f, 80.0f, -40.0f));
     subdivisionSphere->setColor(glm::vec3(0.85f, 0.75f, 1.0f));
@@ -1080,13 +1081,15 @@ void TrainView::drawStuff(bool doingShadows) {
         subdivisionSphere->draw(doingShadows);
     }
 
-    // ---------- Draw Minecraft Models ----------
+    // ---------- Draw Models ----------
     if (mcChest)
         mcChest->draw(glm::vec3(0, -10, 0));
     if (mcFox)
         mcFox->draw(glm::vec3(-20, -10, -20));
     if (tunnel)
         tunnel->draw(glm::vec3(80, -30, 80));
+    if (ghast)
+        ghast->draw(glm::vec3(-80, 100, 80));
 
 #ifdef EXAMPLE_SOLUTION
     // don't draw the train if you're looking out the front window

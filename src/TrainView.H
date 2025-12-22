@@ -121,6 +121,7 @@ public:
     McFox* mcFox = nullptr;
     McVillager* mcVillager = nullptr;
     Tunnel* tunnel = nullptr;
+    Ghast* ghast = nullptr;
     
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }
