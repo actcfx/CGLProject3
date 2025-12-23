@@ -36,6 +36,7 @@ class ControlPoint;
 #include <chrono>
 #include <glm/vec3.hpp>
 #include <glm/gtc/constants.hpp>
+#include <vector>
 
 //#######################################################################
 // TODO
@@ -127,6 +128,7 @@ public:
     McVillager* mcVillager = nullptr;
     Tunnel* tunnel = nullptr;
     Ghast* ghast = nullptr;
+    TNT* tnt = nullptr;
     
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }
@@ -197,7 +199,29 @@ private:
     float ghastModeDuration = 5.0f;
     float ghastTimeLeft = 0.0f;
     std::chrono::steady_clock::time_point ghastLastUpdate {};
+    glm::vec3 villagerWorldPos { 0.0f };
+    bool villagerPosValid = false;
+
+    struct GhastFireball {
+        glm::vec3 pos;
+        glm::vec3 vel;
+        float ttl;
+    };
+    std::vector<GhastFireball> ghastFireballs;
+    float ghastFireInterval = 3.5f;
+    float ghastFireCooldown = 0.0f;
+    float ghastFireSpeed = 10.0f;
+    float ghastFireLifetime = 8.0f;
+    glm::vec3 ghastMouthOffset { 0.0f, 10.0f, 0.0f };
+    float ghastProjectileRadius = 6.0f;
+    float villagerHitRadius = 6.0f;
+    float trainHitRadius = 12.0f;
 
     void updateGhastMotion();
     glm::vec3 sampleGhastDirection();
+    void spawnGhastFireball(const glm::vec3& origin, const glm::vec3& dir);
+    void updateGhastFireballs(float dt);
+    void drawGhastFireballs(bool doingShadows);
+    bool tryPickTnt();
+    void resetTrainAndVillager();
 };
