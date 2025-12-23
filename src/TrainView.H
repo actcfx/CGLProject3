@@ -192,10 +192,9 @@ private:
     glm::vec3 ghastMinBounds { -110.0f, 70.0f, 50.0f };
     glm::vec3 ghastMaxBounds { -50.0f, 130.0f, 110.0f };
     float ghastSpeed = 35.0f;
-    float ghastTurnRateDeg = 20.0f;  // degrees per second
     float ghastYaw = glm::half_pi<float>();
     float ghastBaseYawOffset = glm::half_pi<float>();
-    float ghastModeDuration = 3.0f;
+    float ghastModeDuration = 5.0f;
     float ghastTimeLeft = 0.0f;
     std::chrono::steady_clock::time_point ghastLastUpdate {};
 

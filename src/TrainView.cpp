@@ -1056,11 +1056,19 @@ void TrainView::updateGhastMotion() {
     if (!ghast)
         return;
 
+    auto computeYaw = [](const glm::vec3& d, float fallback) {
+        float horizLen = std::sqrt(d.x * d.x + d.z * d.z);
+        if (horizLen > 1e-4f)
+            return std::atan2(d.x, d.z);
+        return fallback;
+    };
+
     const auto now = std::chrono::steady_clock::now();
     if (ghastLastUpdate.time_since_epoch().count() == 0) {
         ghastLastUpdate = now;
         ghastDirection = sampleGhastDirection();
         ghastTimeLeft = ghastModeDuration;
+        ghastYaw = computeYaw(ghastDirection, ghastYaw);
         return;
     }
 
@@ -1069,21 +1077,8 @@ void TrainView::updateGhastMotion() {
 
     dt = std::min(dt, 0.2f);
 
-    // Update facing with limited turn rate so direction changes feel slower.
     glm::vec3 dir = ghastDirection;
-    float horizLen = std::sqrt(dir.x * dir.x + dir.z * dir.z);
-    float targetYaw = (horizLen > 1e-4f) ? std::atan2(dir.x, dir.z) : ghastYaw;
-    auto wrapPi = [](float a) {
-        const float pi = static_cast<float>(M_PI);
-        const float twoPi = 2.0f * pi;
-        while (a > pi) a -= twoPi;
-        while (a < -pi) a += twoPi;
-        return a;
-    };
-    float delta = wrapPi(targetYaw - ghastYaw);
-    float maxStep = glm::radians(ghastTurnRateDeg) * dt;
-    delta = glm::clamp(delta, -maxStep, maxStep);
-    ghastYaw = wrapPi(ghastYaw + delta);
+    ghastYaw = computeYaw(dir, ghastYaw);
 
     float step = ghastSpeed * dt;
     glm::vec3 proposed = ghastPosition + dir * step;
@@ -1104,6 +1099,7 @@ void TrainView::updateGhastMotion() {
     ghastTimeLeft -= dt;
     if (hitBoundary || ghastTimeLeft <= 0.0f) {
         ghastDirection = sampleGhastDirection();
+        ghastYaw = computeYaw(ghastDirection, ghastYaw);
         ghastTimeLeft = ghastModeDuration;
     }
 }

@@ -103,7 +103,7 @@ public:
     void draw(const glm::vec3& position, float yawRadians) {
         glm::mat4 model(1.0f);
         model = glm::translate(model, position);
-        model = glm::rotate(model, yawRadians, glm::vec3(0, 1, 0));
+        model = glm::rotate(model, yawRadians + glm::radians(90.0f), glm::vec3(0, 1, 0));
         drawInternal(model, false);
     }
 
