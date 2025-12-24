@@ -454,8 +454,7 @@ glm::vec3 TrainView::getPointLightPos() const {
 glm::vec3 TrainView::computeSpotLightPos() const {
     glm::vec3 base(trainPosition.x, trainPosition.y, trainPosition.z);
     glm::vec3 dir = computeSpotLightDir();
-    // Move the spotlight a bit ahead of the train nose and slightly above
-    return base + dir * 25.0f + glm::vec3(0.0f, 5.0f, 0.0f);
+    return base + dir * 20.0f + glm::vec3(0.0f, 5.0f, 0.0f);
 }
 
 glm::vec3 TrainView::computeSpotLightDir() const {
