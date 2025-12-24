@@ -608,6 +608,7 @@ void Water::renderReflection(TrainView* tw) {
         glm::vec3 spotLightDir = tw->getSpotLightDir();
         float spotInnerCos = glm::cos(glm::radians(22.0f));
         float spotOuterCos = glm::cos(glm::radians(32.0f));
+        glm::vec4 clipPlane(0.0f, 1.0f, 0.0f, -waterHeight);
         tw->terrain->draw(
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
             tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
@@ -615,7 +616,7 @@ void Water::renderReflection(TrainView* tw) {
             tw->getPointFarPlane(), enablePointShadow, enablePointLight,
             spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
             tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
-            spotOuterCos, enableSpotShadow, enableSpotLight);
+            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
     }
 
     glEnable(GL_LIGHTING);
@@ -705,6 +706,7 @@ void Water::renderRefraction(TrainView* tw) {
         glm::vec3 spotLightDir = tw->getSpotLightDir();
         float spotInnerCos = glm::cos(glm::radians(22.0f));
         float spotOuterCos = glm::cos(glm::radians(32.0f));
+        glm::vec4 clipPlane(0.0f, -1.0f, 0.0f, waterHeight);
         tw->terrain->draw(
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
             tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
@@ -712,7 +714,7 @@ void Water::renderRefraction(TrainView* tw) {
             tw->getPointFarPlane(), enablePointShadow, enablePointLight,
             spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
             tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
-            spotOuterCos, enableSpotShadow, enableSpotLight);
+            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points

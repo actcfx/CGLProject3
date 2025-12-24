@@ -395,7 +395,9 @@ public:
               const glm::vec3& spotLightPos, const glm::vec3& spotLightDir,
               const glm::mat4& spotLightMatrix, GLuint spotShadowMap,
               float spotFarPlane, float spotInnerCos, float spotOuterCos,
-              bool enableSpotShadow, bool enableSpotLight) {
+              bool enableSpotShadow, bool enableSpotLight,
+              // Clip plane
+              const glm::vec4& clipPlane, bool enableClip) {
         if (!plane)
             return;
 
@@ -416,6 +418,10 @@ public:
         glUniformMatrix4fv(
             glGetUniformLocation(shader->Program, "u_lightSpace"), 1, GL_FALSE,
             glm::value_ptr(lightSpace));
+        glUniform4fv(glGetUniformLocation(shader->Program, "u_clipPlane"), 1,
+                     glm::value_ptr(clipPlane));
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableClip"),
+                    enableClip ? 1 : 0);
 
         glUniform3fv(glGetUniformLocation(shader->Program, "u_lightDir"), 1,
                      glm::value_ptr(lightDir));

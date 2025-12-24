@@ -14,6 +14,8 @@ uniform mat4 u_model;
 uniform mat4 u_view;
 uniform mat4 u_proj;
 uniform mat4 u_lightSpace;
+uniform vec4 u_clipPlane;
+uniform bool u_enableClip;
 
 void main() {
     vec4 world = u_model * vec4(aPos, 1.0);
@@ -23,6 +25,12 @@ void main() {
     vs_out.normal = normalize(normalMat * aNormal);
     vs_out.color = aColor;
     vs_out.lightSpacePos = u_lightSpace * world;
+
+    if (u_enableClip) {
+        gl_ClipDistance[0] = dot(world, u_clipPlane);
+    } else {
+        gl_ClipDistance[0] = 1.0;
+    }
 
     gl_Position = u_proj * u_view * world;
 }

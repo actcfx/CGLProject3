@@ -1200,13 +1200,15 @@ void TrainView::draw() {
     bool enableSpotShadow = spotLightOn;
     float spotInnerCos = glm::cos(glm::radians(22.0f));
     float spotOuterCos = glm::cos(glm::radians(32.0f));
+    glm::vec4 noClipPlane(0.0f);
     terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
                   shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
                   enableShadow, enableLight, pointLightPos, getPointShadowMap(),
                   getPointFarPlane(), enablePointShadow, enablePointLight,
                   spotLightPos, spotLightDir, getSpotLightMatrix(),
                   getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
-                  spotOuterCos, enableSpotShadow, enableSpotLight);
+                  spotOuterCos, enableSpotShadow, enableSpotLight, noClipPlane,
+                  false);
 
     // ---------- Draw the plane ----------
     drawPlane();
