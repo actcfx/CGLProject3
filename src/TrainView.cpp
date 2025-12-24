@@ -27,8 +27,10 @@ references)
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <random>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include <glad/glad.h>
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
@@ -181,6 +183,22 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcFox = new McFox(this);
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
+    ghast = new Ghast(this);
+    jet = new Jet(this);
+    tnt = new TNT(this);
+    soldier = new Soldier(this);
+    ghastPosition = glm::vec3(-80.0f, 100.0f, 80.0f);
+    const glm::vec3 ghastRange(30.0f, 20.0f, 30.0f);
+    ghastMinBounds = ghastPosition - ghastRange;
+    ghastMaxBounds = ghastPosition + ghastRange;
+    ghastDirection = sampleGhastDirection();
+    glm::vec3 initialDir = ghastDirection;
+    float horizLen = std::sqrt(initialDir.x * initialDir.x + initialDir.z * initialDir.z);
+    if (horizLen > 1e-3f)
+        ghastYaw = std::atan2(initialDir.x, initialDir.z);
+    ghastTimeLeft = ghastModeDuration;
+    ghastFireCooldown = ghastFireInterval;
+    ghastLastUpdate = std::chrono::steady_clock::now();
     subdivisionSphere = new SubdivisionSphere(6, 35.0f);
     subdivisionSphere->setCenter(glm::vec3(60.0f, 80.0f, -40.0f));
     subdivisionSphere->setColor(glm::vec3(0.85f, 0.75f, 1.0f));
@@ -226,6 +244,10 @@ int TrainView::handle(int event) {
             last_push = Fl::event_button();
             // if the left button be pushed is left mouse button
             if (last_push == FL_LEFT_MOUSE) {
+                if (tryPickTnt()) {
+                    damage(1);
+                    return 1;
+                }
                 doPick();
                 damage(1);
                 return 1;
@@ -1029,6 +1051,317 @@ void TrainView::setProjection()
 #endif
 }
 
+glm::vec3 TrainView::sampleGhastDirection() {
+    static std::mt19937 rng { std::random_device {}() };
+    std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
+    glm::vec3 dir;
+    do {
+        dir = glm::vec3(dist(rng), dist(rng) * 0.25f, dist(rng));
+    } while (glm::dot(dir, dir) < 1e-3f);
+    return glm::normalize(dir);
+}
+
+void TrainView::spawnGhastFireball(const glm::vec3& origin, const glm::vec3& dir) {
+    GhastFireball fb;
+    fb.pos = origin;
+    fb.vel = dir * ghastFireSpeed;
+    fb.ttl = ghastFireLifetime;
+    ghastFireballs.push_back(fb);
+}
+
+void TrainView::resetTrainAndVillager() {
+    if (tw) {
+        tw->m_Track.trainU = 0.0f;
+    }
+    ghastFireballs.clear();
+    ghastFireCooldown = ghastFireInterval;
+    villagerPosValid = false;
+    damage(1);
+}
+
+void TrainView::updateGhastFireballs(float dt) {
+    for (auto it = ghastFireballs.begin(); it != ghastFireballs.end();) {
+        it->pos += it->vel * dt;
+        it->ttl -= dt;
+
+        bool removed = false;
+        if (villagerPosValid) {
+            float dv = glm::distance(it->pos, villagerWorldPos);
+            if (dv <= villagerHitRadius + ghastProjectileRadius) {
+                resetTrainAndVillager();
+                return;
+            }
+        }
+
+        float dtTrain = glm::distance(it->pos, glm::vec3(trainPosition.x, trainPosition.y, trainPosition.z));
+        if (dtTrain <= trainHitRadius + ghastProjectileRadius) {
+            resetTrainAndVillager();
+            return;
+        }
+
+        if (it->ttl <= 0.0f) {
+            it = ghastFireballs.erase(it);
+            removed = true;
+        }
+
+        if (!removed)
+            ++it;
+    }
+}
+
+void TrainView::drawGhastFireballs(bool doingShadows) {
+    if (ghastFireballs.empty())
+        return;
+
+    if (tnt) {
+        for (const auto& fb : ghastFireballs) {
+            float len2 = glm::dot(fb.vel, fb.vel);
+            if (len2 < 1e-6f)
+                continue;
+            glm::vec3 dir = fb.vel / std::sqrt(len2);
+            float yaw = std::atan2(dir.x, dir.z);
+            glm::mat4 model(1.0f);
+            model = glm::translate(model, fb.pos);
+            model = glm::rotate(model, yaw, glm::vec3(0, 1, 0));
+            tnt->draw(model, doingShadows, smokeStartDistance, smokeEndDistance);
+        }
+    } else {
+        if (doingShadows)
+            return;
+        glPushAttrib(GL_ENABLE_BIT | GL_POINT_BIT | GL_CURRENT_BIT | GL_LIGHTING_BIT);
+        glDisable(GL_LIGHTING);
+        glPointSize(50.0f);
+        glBegin(GL_POINTS);
+        glColor3ub(255, 120, 30);
+        for (const auto& fb : ghastFireballs) {
+            glVertex3f(fb.pos.x, fb.pos.y, fb.pos.z);
+        }
+        glEnd();
+        glPopAttrib();
+    }
+}
+
+bool TrainView::tryPickTnt() {
+    if (ghastFireballs.empty())
+        return false;
+
+    make_current();
+
+    int viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    // Set up a small pick region around the cursor (mirrors control point logic).
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluPickMatrix((double)Fl::event_x(), (double)(viewport[3] - Fl::event_y()), 5.0, 5.0, viewport);
+    setProjection();
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+
+    GLuint buf[128];
+    glSelectBuffer(128, buf);
+    glRenderMode(GL_SELECT);
+    glInitNames();
+    glPushName(0);
+
+    // Draw simple cubes at fireball positions for picking.
+    auto drawPickCube = [](const glm::vec3& pos, float half) {
+        glPushMatrix();
+        glTranslatef(pos.x, pos.y, pos.z);
+        glScalef(half * 2.0f, half * 2.0f, half * 2.0f);
+        glBegin(GL_QUADS);
+        // +Z
+        glNormal3f(0, 0, 1); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f);
+        // -Z
+        glNormal3f(0, 0, -1); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f);
+        // -X
+        glNormal3f(-1, 0, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        // +X
+        glNormal3f(1, 0, 0); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, 0.5f);
+        // +Y
+        glNormal3f(0, 1, 0); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        // -Y
+        glNormal3f(0, -1, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, -0.5f, 0.5f);
+        glEnd();
+        glPopMatrix();
+    };
+
+    const float halfSize = std::max(ghastProjectileRadius * 1.5f, 8.0f);
+    for (size_t i = 0; i < ghastFireballs.size(); ++i) {
+        glLoadName((GLuint)(i + 1));
+        drawPickCube(ghastFireballs[i].pos, halfSize);
+    }
+
+    GLint hits = glRenderMode(GL_RENDER);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    if (hits <= 0)
+        return false;
+
+    // Select the nearest hit (smallest depth).
+    GLuint* ptr = buf;
+    GLuint chosenName = 0;
+    GLuint bestDepth = 0xffffffffu;
+    for (int i = 0; i < hits; ++i) {
+        GLuint numNames = ptr[0];
+        GLuint z1 = ptr[1];
+        // GLuint z2 = ptr[2];
+        GLuint name = ptr[3];
+        if (z1 < bestDepth && numNames > 0) {
+            bestDepth = z1;
+            chosenName = name;
+        }
+        ptr += (3 + numNames);
+    }
+
+    if (chosenName == 0)
+        return false;
+
+    size_t idx = chosenName - 1;
+    if (idx < ghastFireballs.size()) {
+        ghastFireballs.erase(ghastFireballs.begin() + idx);
+        return true;
+    }
+
+    return false;
+}
+
+bool TrainView::buildMouseRay(glm::vec3& outP0, glm::vec3& outP1,
+                              double* outModel, double* outProj,
+                              int* outViewport) {
+    double model[16];
+    double proj[16];
+    int viewport[4];
+    if (!fetchViewMatrices(model, proj, viewport))
+        return false;
+
+    const int mx = Fl::event_x();
+    const int my = Fl::event_y();
+    const int y = viewport[3] - my;
+
+    double p0x, p0y, p0z, p1x, p1y, p1z;
+    int ok0 = gluUnProject((double)mx, (double)y, 0.0, model, proj, viewport,
+                           &p0x, &p0y, &p0z);
+    int ok1 = gluUnProject((double)mx, (double)y, 1.0, model, proj, viewport,
+                           &p1x, &p1y, &p1z);
+
+    if (!(ok0 && ok1))
+        return false;
+
+    if (outModel)
+        std::copy(model, model + 16, outModel);
+    if (outProj)
+        std::copy(proj, proj + 16, outProj);
+    if (outViewport)
+        std::copy(viewport, viewport + 4, outViewport);
+
+    outP0 = glm::vec3((float)p0x, (float)p0y, (float)p0z);
+    outP1 = glm::vec3((float)p1x, (float)p1y, (float)p1z);
+    return true;
+}
+
+bool TrainView::fetchViewMatrices(double* outModel, double* outProj,
+                                  int* outViewport) {
+    if (!outModel || !outProj || !outViewport)
+        return false;
+
+    make_current();
+
+    glGetIntegerv(GL_VIEWPORT, outViewport);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+
+    setProjection();
+
+    glGetDoublev(GL_PROJECTION_MATRIX, outProj);
+    glGetDoublev(GL_MODELVIEW_MATRIX, outModel);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    return true;
+}
+
+void TrainView::updateGhastMotion() {
+    if (!ghast)
+        return;
+
+    auto computeYaw = [](const glm::vec3& d, float fallback) {
+        float horizLen = std::sqrt(d.x * d.x + d.z * d.z);
+        if (horizLen > 1e-4f)
+            return std::atan2(d.x, d.z);
+        return fallback;
+    };
+
+    const auto now = std::chrono::steady_clock::now();
+    if (ghastLastUpdate.time_since_epoch().count() == 0) {
+        ghastLastUpdate = now;
+        ghastDirection = sampleGhastDirection();
+        ghastTimeLeft = ghastModeDuration;
+        ghastYaw = computeYaw(ghastDirection, ghastYaw);
+        ghastFireCooldown = ghastFireInterval;
+        return;
+    }
+
+    float dt = std::chrono::duration<float>(now - ghastLastUpdate).count();
+    ghastLastUpdate = now;
+
+    dt = std::min(dt, 0.2f);
+
+    glm::vec3 dir = ghastDirection;
+    ghastYaw = computeYaw(dir, ghastYaw);
+
+    float step = ghastSpeed * dt;
+    glm::vec3 proposed = ghastPosition + dir * step;
+
+    auto clampToBounds = [&](float v, float minV, float maxV) {
+        return std::max(minV, std::min(maxV, v));
+    };
+
+    glm::vec3 clamped = proposed;
+    clamped.x = clampToBounds(clamped.x, ghastMinBounds.x, ghastMaxBounds.x);
+    clamped.y = clampToBounds(clamped.y, ghastMinBounds.y, ghastMaxBounds.y);
+    clamped.z = clampToBounds(clamped.z, ghastMinBounds.z, ghastMaxBounds.z);
+
+    glm::vec3 diff = glm::abs(clamped - proposed);
+    bool hitBoundary = (diff.x > 1e-5f) || (diff.y > 1e-5f) || (diff.z > 1e-5f);
+    ghastPosition = clamped;
+
+    ghastTimeLeft -= dt;
+    ghastFireCooldown -= dt;
+
+    if (hitBoundary || ghastTimeLeft <= 0.0f) {
+        ghastDirection = sampleGhastDirection();
+        ghastYaw = computeYaw(ghastDirection, ghastYaw);
+        ghastTimeLeft = ghastModeDuration;
+    }
+
+    if (villagerPosValid && ghastFireCooldown <= 0.0f) {
+        glm::vec3 mouth = ghastPosition + ghastMouthOffset;
+        glm::vec3 toVillager = villagerWorldPos - mouth;
+        if (glm::dot(toVillager, toVillager) > 1e-3f) {
+            glm::vec3 fireDir = glm::normalize(toVillager);
+            spawnGhastFireball(mouth, fireDir);
+        }
+        ghastFireCooldown = ghastFireInterval;
+    }
+
+    updateGhastFireballs(dt);
+}
+
 //************************************************************************
 //
 // * this draws all of the stuff in the world
@@ -1080,13 +1413,24 @@ void TrainView::drawStuff(bool doingShadows) {
         subdivisionSphere->draw(doingShadows);
     }
 
-    // ---------- Draw Minecraft Models ----------
+    // ---------- Draw Models ----------
     if (mcChest)
         mcChest->draw(glm::vec3(0, -10, 0));
     if (mcFox)
         mcFox->draw(glm::vec3(-20, -10, -20));
     if (tunnel)
         tunnel->draw(glm::vec3(80, -30, 80));
+    if (ghast && tw->minecraftButton->value()) {
+        if (!doingShadows)
+            updateGhastMotion();
+        ghast->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
+    }
+    if (jet && !tw->minecraftButton->value()) {
+        if (!doingShadows)
+            updateGhastMotion();
+        jet->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
+    }   
+    drawGhastFireballs(doingShadows);
 
 #ifdef EXAMPLE_SOLUTION
     // don't draw the train if you're looking out the front window
@@ -1616,6 +1960,8 @@ void TrainView::drawTrack(bool doingShadows) {
 }
 
 void TrainView::drawTrain(bool doingShadows) {
+    villagerPosValid = false;
+
     const size_t pointCount = m_pTrack->points.size();
     const int splineMode = tw->splineBrowser->value();
     const size_t minPoints = (splineMode == 1) ? 2 : 4;
@@ -2162,6 +2508,10 @@ void TrainView::drawTrain(bool doingShadows) {
         glm::mat4 modelMatrix = basis * assetFix;
         glm::mat4 villagerOffset =
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
+
+        glm::vec4 villagerWorld = modelMatrix / assetFix * villagerOffset * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        villagerWorldPos = glm::vec3(villagerWorld);
+        villagerPosValid = true;
             
         mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
                         smokeEndDistance);
@@ -2182,7 +2532,10 @@ void TrainView::drawTrain(bool doingShadows) {
         basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
         glm::mat4 modelMatrix = basis;
-            
+        glm::vec4 villagerWorld = modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        villagerWorldPos = glm::vec3(villagerWorld);
+        villagerPosValid = true;
+
         mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
                         smokeEndDistance);
     }else if(!useMinecraftTrain && !tw->trainCam->value()) {
@@ -2198,8 +2551,11 @@ void TrainView::drawTrain(bool doingShadows) {
         basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
         glm::mat4 modelMatrix = basis;
-            
-        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+        glm::vec4 villagerWorld = modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        villagerWorldPos = glm::vec3(villagerWorld);
+        villagerPosValid = true;
+
+        soldier->draw(modelMatrix, doingShadows, smokeStartDistance,
                         smokeEndDistance);
     }
 }

@@ -1,0 +1,11 @@
+Model Information:
+* title:	TNT ball
+* source:	https://sketchfab.com/3d-models/tnt-ball-34eb24cf929c49d4a0079c9e91adad5d
+* author:	Sharko (https://sketchfab.com/sharko1711)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "TNT ball" (https://sketchfab.com/3d-models/tnt-ball-34eb24cf929c49d4a0079c9e91adad5d) by Sharko (https://sketchfab.com/sharko1711) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

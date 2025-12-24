@@ -1,0 +1,11 @@
+Model Information:
+* title:	Soldier
+* source:	https://sketchfab.com/3d-models/soldier-6746867266f04bf5aed3b4f0a6df278c
+* author:	Vr-cvantorium (https://sketchfab.com/Vr-cvantorium)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Soldier" (https://sketchfab.com/3d-models/soldier-6746867266f04bf5aed3b4f0a6df278c) by Vr-cvantorium (https://sketchfab.com/Vr-cvantorium) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

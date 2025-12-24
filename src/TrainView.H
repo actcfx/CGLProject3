@@ -33,6 +33,11 @@ class ControlPoint;
 
 #include "Utilities/Pnt3f.H"
 
+#include <chrono>
+#include <glm/vec3.hpp>
+#include <glm/gtc/constants.hpp>
+#include <vector>
+
 //#######################################################################
 // TODO
 // You might change the TrainView in order to add different objects to
@@ -88,6 +93,7 @@ public:
     void drawTrain(bool doingShadows);
     void drawOden(bool doingShadows);
 
+
     // setup the projection - assuming that the projection stack has been
     // cleared for you
     void setProjection();
@@ -121,6 +127,10 @@ public:
     McFox* mcFox = nullptr;
     McVillager* mcVillager = nullptr;
     Tunnel* tunnel = nullptr;
+    Ghast* ghast = nullptr;
+    TNT* tnt = nullptr;
+    Jet* jet = nullptr;
+    Soldier* soldier = nullptr;
     
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }
@@ -179,4 +189,45 @@ private:
 
     float smokeStartDistance = 100.0f;
     float smokeEndDistance = 800.0f;
+
+    // ---------- Ghast motion ----------
+    glm::vec3 ghastPosition { -80.0f, 100.0f, 80.0f };
+    glm::vec3 ghastDirection { 1.0f, 0.0f, 0.0f };
+    glm::vec3 ghastMinBounds { -110.0f, 70.0f, 50.0f };
+    glm::vec3 ghastMaxBounds { -50.0f, 130.0f, 110.0f };
+    float ghastSpeed = 35.0f;
+    float ghastYaw = glm::half_pi<float>();
+    float ghastBaseYawOffset = glm::half_pi<float>();
+    float ghastModeDuration = 5.0f;
+    float ghastTimeLeft = 0.0f;
+    std::chrono::steady_clock::time_point ghastLastUpdate {};
+    glm::vec3 villagerWorldPos { 0.0f };
+    bool villagerPosValid = false;
+
+    struct GhastFireball {
+        glm::vec3 pos;
+        glm::vec3 vel;
+        float ttl;
+    };
+    std::vector<GhastFireball> ghastFireballs;
+    float ghastFireInterval = 3.5f;
+    float ghastFireCooldown = 0.0f;
+    float ghastFireSpeed = 180.0f;
+    float ghastFireLifetime = 8.0f;
+    glm::vec3 ghastMouthOffset { 0.0f, 10.0f, 0.0f };
+    float ghastProjectileRadius = 6.0f;
+    float villagerHitRadius = 6.0f;
+    float trainHitRadius = 12.0f;
+
+    void updateGhastMotion();
+    glm::vec3 sampleGhastDirection();
+    void spawnGhastFireball(const glm::vec3& origin, const glm::vec3& dir);
+    void updateGhastFireballs(float dt);
+    void drawGhastFireballs(bool doingShadows);
+    bool tryPickTnt();
+    bool buildMouseRay(glm::vec3& outP0, glm::vec3& outP1,
+                       double* outModel = nullptr, double* outProj = nullptr,
+                       int* outViewport = nullptr);
+    bool fetchViewMatrices(double* outModel, double* outProj, int* outViewport);
+    void resetTrainAndVillager();
 };
