@@ -210,7 +210,7 @@ private:
     std::vector<GhastFireball> ghastFireballs;
     float ghastFireInterval = 3.5f;
     float ghastFireCooldown = 0.0f;
-    float ghastFireSpeed = 10.0f;
+    float ghastFireSpeed = 180.0f;
     float ghastFireLifetime = 8.0f;
     glm::vec3 ghastMouthOffset { 0.0f, 10.0f, 0.0f };
     float ghastProjectileRadius = 6.0f;
@@ -223,5 +223,9 @@ private:
     void updateGhastFireballs(float dt);
     void drawGhastFireballs(bool doingShadows);
     bool tryPickTnt();
+    bool buildMouseRay(glm::vec3& outP0, glm::vec3& outP1,
+                       double* outModel = nullptr, double* outProj = nullptr,
+                       int* outViewport = nullptr);
+    bool fetchViewMatrices(double* outModel, double* outProj, int* outViewport);
     void resetTrainAndVillager();
 };

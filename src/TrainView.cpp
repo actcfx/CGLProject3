@@ -30,6 +30,7 @@ references)
 #include <random>
 #include <string>
 #include <vector>
+#include <limits>
 
 #include <glad/glad.h>
 #include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
@@ -1142,36 +1143,154 @@ bool TrainView::tryPickTnt() {
     if (ghastFireballs.empty())
         return false;
 
-    double r1x, r1y, r1z, r2x, r2y, r2z;
-    if (!getMouseLine(r1x, r1y, r1z, r2x, r2y, r2z))
-        return false;
+    make_current();
 
-    glm::vec3 p0((float)r1x, (float)r1y, (float)r1z);
-    glm::vec3 p1((float)r2x, (float)r2y, (float)r2z);
-    glm::vec3 dir = p1 - p0;
-    float len2 = glm::dot(dir, dir);
-    if (len2 < 1e-8f)
-        return false;
-    dir /= std::sqrt(len2);
+    int viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
 
-    const float radius = ghastProjectileRadius;
-    auto hitSphere = [&](const glm::vec3& center) {
-        glm::vec3 toC = center - p0;
-        float t = glm::dot(toC, dir);
-        if (t < 0.0f)
-            return false;
-        glm::vec3 closest = p0 + dir * t;
-        float dist2 = glm::dot(center - closest, center - closest);
-        return dist2 <= radius * radius;
+    // Set up a small pick region around the cursor (mirrors control point logic).
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluPickMatrix((double)Fl::event_x(), (double)(viewport[3] - Fl::event_y()), 5.0, 5.0, viewport);
+    setProjection();
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+
+    GLuint buf[128];
+    glSelectBuffer(128, buf);
+    glRenderMode(GL_SELECT);
+    glInitNames();
+    glPushName(0);
+
+    // Draw simple cubes at fireball positions for picking.
+    auto drawPickCube = [](const glm::vec3& pos, float half) {
+        glPushMatrix();
+        glTranslatef(pos.x, pos.y, pos.z);
+        glScalef(half * 2.0f, half * 2.0f, half * 2.0f);
+        glBegin(GL_QUADS);
+        // +Z
+        glNormal3f(0, 0, 1); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f);
+        // -Z
+        glNormal3f(0, 0, -1); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f);
+        // -X
+        glNormal3f(-1, 0, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        // +X
+        glNormal3f(1, 0, 0); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, 0.5f);
+        // +Y
+        glNormal3f(0, 1, 0); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        // -Y
+        glNormal3f(0, -1, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, -0.5f, 0.5f);
+        glEnd();
+        glPopMatrix();
     };
 
-    for (auto it = ghastFireballs.begin(); it != ghastFireballs.end(); ++it) {
-        if (hitSphere(it->pos)) {
-            ghastFireballs.erase(it);
-            return true;
-        }
+    const float halfSize = std::max(ghastProjectileRadius * 1.5f, 8.0f);
+    for (size_t i = 0; i < ghastFireballs.size(); ++i) {
+        glLoadName((GLuint)(i + 1));
+        drawPickCube(ghastFireballs[i].pos, halfSize);
     }
+
+    GLint hits = glRenderMode(GL_RENDER);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    if (hits <= 0)
+        return false;
+
+    // Select the nearest hit (smallest depth).
+    GLuint* ptr = buf;
+    GLuint chosenName = 0;
+    GLuint bestDepth = 0xffffffffu;
+    for (int i = 0; i < hits; ++i) {
+        GLuint numNames = ptr[0];
+        GLuint z1 = ptr[1];
+        // GLuint z2 = ptr[2];
+        GLuint name = ptr[3];
+        if (z1 < bestDepth && numNames > 0) {
+            bestDepth = z1;
+            chosenName = name;
+        }
+        ptr += (3 + numNames);
+    }
+
+    if (chosenName == 0)
+        return false;
+
+    size_t idx = chosenName - 1;
+    if (idx < ghastFireballs.size()) {
+        ghastFireballs.erase(ghastFireballs.begin() + idx);
+        return true;
+    }
+
     return false;
+}
+
+bool TrainView::buildMouseRay(glm::vec3& outP0, glm::vec3& outP1,
+                              double* outModel, double* outProj,
+                              int* outViewport) {
+    double model[16];
+    double proj[16];
+    int viewport[4];
+    if (!fetchViewMatrices(model, proj, viewport))
+        return false;
+
+    const int mx = Fl::event_x();
+    const int my = Fl::event_y();
+    const int y = viewport[3] - my;
+
+    double p0x, p0y, p0z, p1x, p1y, p1z;
+    int ok0 = gluUnProject((double)mx, (double)y, 0.0, model, proj, viewport,
+                           &p0x, &p0y, &p0z);
+    int ok1 = gluUnProject((double)mx, (double)y, 1.0, model, proj, viewport,
+                           &p1x, &p1y, &p1z);
+
+    if (!(ok0 && ok1))
+        return false;
+
+    if (outModel)
+        std::copy(model, model + 16, outModel);
+    if (outProj)
+        std::copy(proj, proj + 16, outProj);
+    if (outViewport)
+        std::copy(viewport, viewport + 4, outViewport);
+
+    outP0 = glm::vec3((float)p0x, (float)p0y, (float)p0z);
+    outP1 = glm::vec3((float)p1x, (float)p1y, (float)p1z);
+    return true;
+}
+
+bool TrainView::fetchViewMatrices(double* outModel, double* outProj,
+                                  int* outViewport) {
+    if (!outModel || !outProj || !outViewport)
+        return false;
+
+    make_current();
+
+    glGetIntegerv(GL_VIEWPORT, outViewport);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+
+    setProjection();
+
+    glGetDoublev(GL_PROJECTION_MATRIX, outProj);
+    glGetDoublev(GL_MODELVIEW_MATRIX, outModel);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    return true;
 }
 
 void TrainView::updateGhastMotion() {
