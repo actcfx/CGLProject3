@@ -184,6 +184,7 @@ private:
     Shader* paintShader = nullptr;
     Shader* crosshatchShader = nullptr;
     Shader* stippleShader = nullptr;
+    Shader* snowflakeShader = nullptr;
 
     void initFrameBufferShader();
 

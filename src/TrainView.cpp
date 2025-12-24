@@ -486,6 +486,8 @@ void TrainView::clearGlad() {
 }
 
 void TrainView::drawPlane() {
+    int shaderType = tw->shaderBrowser->value();
+
     if (!this->shader || !this->plane)
         return;
 
@@ -509,7 +511,9 @@ void TrainView::drawPlane() {
         modelMatrix = glm::scale(modelMatrix, glm::vec3(scaleX, 1.0f, scaleZ));
     } else {
         modelMatrix = glm::translate(modelMatrix, glm::vec3(0.0f, 10.0f, 0.0f));
-        modelMatrix = glm::scale(modelMatrix, glm::vec3(40.0f, 40.0f, 40.0f));
+        float planeScale = (shaderType == 6) ? 70.0f : 40.0f;
+        modelMatrix = glm::scale(modelMatrix,
+                                 glm::vec3(planeScale, planeScale, planeScale));
     }
 
     glUniformMatrix4fv(glGetUniformLocation(this->shader->Program, "u_model"),
@@ -688,6 +692,15 @@ void TrainView::draw() {
     static int lastShader = -1;
     int shaderType = tw->shaderBrowser->value();
 
+    auto ensureQuadPlane = [&]() {
+        // Guarantee a square plane + UBO even if the previous church shader
+        // left us with a triangle mesh.
+        if (!church->plane || church->plane->element_amount != 6 ||
+            !church->commonMatrices) {
+            church->initSimple();
+        }
+    };
+
     if (shaderType != lastShader) {
         if (shaderType == 1) {
             church->initSimple();
@@ -699,6 +712,13 @@ void TrainView::draw() {
             water->initSineWave();
         } else if (shaderType == 5) {
             water->initReflectionWater(this);
+        } else if (shaderType == 6) {
+            ensureQuadPlane();
+            if (!snowflakeShader) {
+                snowflakeShader = new Shader("./shaders/fractal.vert", nullptr,
+                                             nullptr, nullptr,
+                                             "./shaders/snowflake.frag");
+            }
         }
         lastShader = shaderType;
     }
@@ -728,6 +748,11 @@ void TrainView::draw() {
         this->plane = water->plane;
         this->texture = water->texture;
         this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 6) {
+        this->shader = snowflakeShader;
+        this->plane = church->plane;
+        this->texture = nullptr;
+        this->commonMatrices = church->commonMatrices;
     } else {
         clearGlad();
     }
