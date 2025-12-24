@@ -23,6 +23,7 @@ references)
 *************************************************************************/
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <functional>
@@ -31,7 +32,6 @@ references)
 #include <random>
 #include <string>
 #include <vector>
-
 
 #include <glad/glad.h>
 #include <mmsystem.h>
@@ -43,12 +43,12 @@ references)
 #include <glm/gtc/type_ptr.hpp>
 #include "ControlPoint.H"
 #include "GL/glu.h"
+#include "RenderUtilities/Shader.h"
 #include "Stuffs/SubdivisionSphere.hpp"
 #include "Stuffs/totemOfUndying.hpp"
 #include "TrainView.H"
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
-
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -363,22 +363,10 @@ void TrainView::setLighting() {
 
     // ---------- Point Light ----------
     auto setPointLight = [this]() -> void {
-        float pointAmbient[] = { 0.05f, 0.05f, 0.02f, 1.0f };
-        float pointDiffuse[] = { 1.0f, 1.0f, 0.2f, 1.0f };
+        float pointAmbient[] = { 0.10f, 0.10f, 0.04f, 1.0f };
+        float pointDiffuse[] = { 2.0f, 2.0f, 0.4f, 1.0f };
 
-        Pnt3f pointPosition(10.0f, 10.0f, 10.0f);
-        Pnt3f pointOrientation(0.0f, -1.0f, 0.0f);
-
-        if (!m_pTrack->points.empty()) {
-            int selectIndex = (selectedCube >= 0 &&
-                               selectedCube < (int)m_pTrack->points.size())
-                                  ? selectedCube
-                                  : 0;
-            pointPosition = m_pTrack->points[(size_t)selectIndex].pos;
-            pointOrientation = m_pTrack->points[(size_t)selectIndex].orient;
-            pointOrientation.normalize();
-        }
-
+        glm::vec3 pointPosition = computePointLightPos();
         float pointLightPosition[] = { pointPosition.x, pointPosition.y,
                                        pointPosition.z, 1.0f };
 
@@ -444,6 +432,45 @@ void TrainView::setLighting() {
     } else {
         glDisable(GL_FOG);
     }
+}
+
+glm::vec3 TrainView::computePointLightPos() const {
+    glm::vec3 pointPosition(10.0f, 10.0f, 10.0f);
+    if (m_pTrack && !m_pTrack->points.empty()) {
+        int selectIndex =
+            (selectedCube >= 0 && selectedCube < (int)m_pTrack->points.size())
+                ? selectedCube
+                : 0;
+        const auto& cp = m_pTrack->points[(size_t)selectIndex];
+        pointPosition = glm::vec3(cp.pos.x, cp.pos.y, cp.pos.z);
+    }
+    return pointPosition;
+}
+
+glm::vec3 TrainView::getPointLightPos() const {
+    return computePointLightPos();
+}
+
+glm::vec3 TrainView::computeSpotLightPos() const {
+    glm::vec3 base(trainPosition.x, trainPosition.y, trainPosition.z);
+    glm::vec3 dir = computeSpotLightDir();
+    // Move the spotlight a bit ahead of the train nose and slightly above
+    return base + dir * 25.0f + glm::vec3(0.0f, 5.0f, 0.0f);
+}
+
+glm::vec3 TrainView::computeSpotLightDir() const {
+    glm::vec3 dir(trainForward.x, trainForward.y, trainForward.z);
+    if (glm::length(dir) < 1e-4f)
+        dir = glm::vec3(0.0f, -0.5f, -1.0f);
+    return glm::normalize(dir);
+}
+
+glm::vec3 TrainView::getSpotLightPos() const {
+    return computeSpotLightPos();
+}
+
+glm::vec3 TrainView::getSpotLightDir() const {
+    return computeSpotLightDir();
 }
 
 void TrainView::initShadowMap() {
@@ -538,6 +565,202 @@ void TrainView::renderShadowMap() {
     glPopMatrix();
     glMatrixMode(GL_MODELVIEW);
 
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+
+void TrainView::initPointShadowMap() {
+    if (pointShadowFBO != 0 && pointShadowDepthMap != 0 && pointShadowShader)
+        return;
+
+    if (!pointShadowShader) {
+        pointShadowShader =
+            new Shader("./shaders/pointShadowDepth.vert", nullptr, nullptr,
+                       nullptr, "./shaders/pointShadowDepth.frag");
+    }
+
+    if (pointShadowFBO == 0)
+        glGenFramebuffers(1, &pointShadowFBO);
+    if (pointShadowDepthMap == 0)
+        glGenTextures(1, &pointShadowDepthMap);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, pointShadowDepthMap);
+    for (int i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0,
+                     GL_DEPTH_COMPONENT24, pointShadowMapResolution,
+                     pointShadowMapResolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+                     nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                         pointShadowDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void TrainView::renderPointShadowMap() {
+    if (!terrain || !tw || !tw->pointLightButton ||
+        tw->pointLightButton->value() == 0)
+        return;
+
+    initPointShadowMap();
+
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFBO);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    glm::vec3 lightPos = computePointLightPos();
+    glm::mat4 shadowProj = glm::perspective(
+        glm::radians(90.0f), 1.0f, pointShadowNearPlane, pointShadowFarPlane);
+
+    std::array<glm::mat4, 6> shadowTransforms = {
+        glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f),
+                    glm::vec3(0.0f, 0.0f, 1.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f),
+                    glm::vec3(0.0f, 0.0f, -1.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f))
+    };
+
+    glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+    glViewport(0, 0, pointShadowMapResolution, pointShadowMapResolution);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    pointShadowShader->Use();
+    glUniform3fv(glGetUniformLocation(pointShadowShader->Program, "u_lightPos"),
+                 1, glm::value_ptr(lightPos));
+    glUniform1f(glGetUniformLocation(pointShadowShader->Program, "u_farPlane"),
+                pointShadowFarPlane);
+
+    for (size_t i = 0; i < shadowTransforms.size(); ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)i,
+                               pointShadowDepthMap, 0);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glm::mat4 lightMat = shadowProj * shadowTransforms[i];
+        glUniformMatrix4fv(
+            glGetUniformLocation(pointShadowShader->Program, "u_lightMatrix"),
+            1, GL_FALSE, glm::value_ptr(lightMat));
+
+        terrain->drawPointShadow(pointShadowShader, lightMat, lightPos,
+                                 pointShadowFarPlane);
+    }
+
+    glUseProgram(0);
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+
+void TrainView::initSpotShadowMap() {
+    if (spotShadowFBO != 0 && spotShadowDepthMap != 0 && spotShadowShader)
+        return;
+
+    if (!spotShadowShader) {
+        spotShadowShader =
+            new Shader("./shaders/pointShadowDepth.vert", nullptr, nullptr,
+                       nullptr, "./shaders/pointShadowDepth.frag");
+    }
+
+    if (spotShadowFBO == 0)
+        glGenFramebuffers(1, &spotShadowFBO);
+    if (spotShadowDepthMap == 0)
+        glGenTextures(1, &spotShadowDepthMap);
+
+    glBindTexture(GL_TEXTURE_2D, spotShadowDepthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+                 spotShadowMapResolution, spotShadowMapResolution, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           spotShadowDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void TrainView::renderSpotShadowMap() {
+    if (!terrain || !tw || !tw->spotLightButton ||
+        tw->spotLightButton->value() == 0)
+        return;
+
+    initSpotShadowMap();
+
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFBO);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    glm::vec3 lightPos = computeSpotLightPos();
+    glm::vec3 lightDir = computeSpotLightDir();
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    if (std::abs(glm::dot(up, lightDir)) > 0.95f)
+        up = glm::vec3(0.0f, 0.0f, 1.0f);
+
+    glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, up);
+    glm::mat4 lightProj = glm::perspective(
+        glm::radians(35.0f), 1.0f, spotShadowNearPlane, spotShadowFarPlane);
+    spotLightMatrix = lightProj * lightView;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFBO);
+    glViewport(0, 0, spotShadowMapResolution, spotShadowMapResolution);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(4.0f, 4.0f);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    spotShadowShader->Use();
+    glUniform3fv(glGetUniformLocation(spotShadowShader->Program, "u_lightPos"),
+                 1, glm::value_ptr(lightPos));
+    glUniform1f(glGetUniformLocation(spotShadowShader->Program, "u_farPlane"),
+                spotShadowFarPlane);
+    glUniformMatrix4fv(
+        glGetUniformLocation(spotShadowShader->Program, "u_lightMatrix"), 1,
+        GL_FALSE, glm::value_ptr(spotLightMatrix));
+
+    terrain->drawPointShadow(spotShadowShader, spotLightMatrix, lightPos,
+                             spotShadowFarPlane);
+
+    glUseProgram(0);
     glDisable(GL_POLYGON_OFFSET_FILL);
     glCullFace(GL_BACK);
     glDisable(GL_CULL_FACE);
@@ -861,7 +1084,24 @@ void TrainView::draw() {
                                     enablePaint || enableCrosshatch ||
                                     enableStipple;
 
-    renderShadowMap();
+    const bool directionalLightOn =
+        tw && tw->directionalLightButton && tw->directionalLightButton->value();
+    const bool pointLightOn =
+        tw && tw->pointLightButton && tw->pointLightButton->value();
+    const bool spotLightOn =
+        tw && tw->spotLightButton && tw->spotLightButton->value();
+
+    if (directionalLightOn) {
+        renderShadowMap();
+    }
+
+    if (pointLightOn) {
+        renderPointShadowMap();
+    }
+
+    if (spotLightOn) {
+        renderSpotShadowMap();
+    }
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
@@ -949,11 +1189,24 @@ void TrainView::draw() {
 
     // ---------- Draw the terrain ----------
     glm::vec3 cameraPos = totemCameraPos;
-    bool enableShadow = tw && tw->directionalLightButton &&
-                        tw->directionalLightButton->value() != 0;
+    bool enableShadow = directionalLightOn;
+    bool enableLight = directionalLightOn;
+    glm::vec3 pointLightPos = getPointLightPos();
+    bool enablePointLight = pointLightOn;
+    bool enablePointShadow = pointLightOn;
+    glm::vec3 spotLightPos = getSpotLightPos();
+    glm::vec3 spotLightDir = getSpotLightDir();
+    bool enableSpotLight = spotLightOn;
+    bool enableSpotShadow = spotLightOn;
+    float spotInnerCos = glm::cos(glm::radians(22.0f));
+    float spotOuterCos = glm::cos(glm::radians(32.0f));
     terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
                   shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
-                  enableShadow);
+                  enableShadow, enableLight, pointLightPos, getPointShadowMap(),
+                  getPointFarPlane(), enablePointShadow, enablePointLight,
+                  spotLightPos, spotLightDir, getSpotLightMatrix(),
+                  getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
+                  spotOuterCos, enableSpotShadow, enableSpotLight);
 
     // ---------- Draw the plane ----------
     drawPlane();

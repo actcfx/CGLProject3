@@ -596,9 +596,26 @@ void Water::renderReflection(TrainView* tw) {
         glm::vec3 cameraPos = glm::vec3(invView[3]);
         bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
                             tw->tw->directionalLightButton->value() != 0;
-        tw->terrain->draw(view_matrix, projection_matrix,
-                          tw->getLightSpaceMatrix(), tw->getShadowMap(),
-                          tw->getDirLightDir(), cameraPos, enableShadow);
+        bool enableLight = enableShadow;
+        bool enablePointLight = tw->tw && tw->tw->pointLightButton &&
+                                tw->tw->pointLightButton->value() != 0;
+        bool enablePointShadow = enablePointLight;
+        glm::vec3 pointLightPos = tw->getPointLightPos();
+        bool enableSpotLight = tw->tw && tw->tw->spotLightButton &&
+                               tw->tw->spotLightButton->value() != 0;
+        bool enableSpotShadow = enableSpotLight;
+        glm::vec3 spotLightPos = tw->getSpotLightPos();
+        glm::vec3 spotLightDir = tw->getSpotLightDir();
+        float spotInnerCos = glm::cos(glm::radians(22.0f));
+        float spotOuterCos = glm::cos(glm::radians(32.0f));
+        tw->terrain->draw(
+            view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
+            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
+            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
+            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
+            spotOuterCos, enableSpotShadow, enableSpotLight);
     }
 
     glEnable(GL_LIGHTING);
@@ -676,9 +693,26 @@ void Water::renderRefraction(TrainView* tw) {
         glm::vec3 cameraPos = glm::vec3(invView[3]);
         bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
                             tw->tw->directionalLightButton->value() != 0;
-        tw->terrain->draw(view_matrix, projection_matrix,
-                          tw->getLightSpaceMatrix(), tw->getShadowMap(),
-                          tw->getDirLightDir(), cameraPos, enableShadow);
+        bool enableLight = enableShadow;
+        bool enablePointLight = tw->tw && tw->tw->pointLightButton &&
+                                tw->tw->pointLightButton->value() != 0;
+        bool enablePointShadow = enablePointLight;
+        glm::vec3 pointLightPos = tw->getPointLightPos();
+        bool enableSpotLight = tw->tw && tw->tw->spotLightButton &&
+                               tw->tw->spotLightButton->value() != 0;
+        bool enableSpotShadow = enableSpotLight;
+        glm::vec3 spotLightPos = tw->getSpotLightPos();
+        glm::vec3 spotLightDir = tw->getSpotLightDir();
+        float spotInnerCos = glm::cos(glm::radians(22.0f));
+        float spotOuterCos = glm::cos(glm::radians(32.0f));
+        tw->terrain->draw(
+            view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
+            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
+            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
+            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
+            spotOuterCos, enableSpotShadow, enableSpotLight);
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points

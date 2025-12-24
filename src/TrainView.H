@@ -30,6 +30,7 @@
 class TrainWindow;
 class CTrack;
 class ControlPoint;
+class Shader;
 
 #include "Utilities/Pnt3f.H"
 
@@ -38,7 +39,6 @@ class ControlPoint;
 #include <glm/mat4x4.hpp>
 #include <glm/vec3.hpp>
 #include <vector>
-
 
 //#######################################################################
 // TODO
@@ -70,7 +70,6 @@ class ControlPoint;
 #include "Shaders/Water.hpp"
 #include "Stuffs/ModelActors.hpp"
 #include "Stuffs/Terrain.hpp"
-
 
 class TotemOfUndying;
 class SubdivisionSphere;
@@ -143,6 +142,22 @@ public:
 
     glm::vec3 getDirLightDir() const { return dirLightDir; }
 
+    GLuint getPointShadowMap() const { return pointShadowDepthMap; }
+
+    float getPointFarPlane() const { return pointShadowFarPlane; }
+
+    glm::vec3 getPointLightPos() const;
+
+    GLuint getSpotShadowMap() const { return spotShadowDepthMap; }
+
+    float getSpotFarPlane() const { return spotShadowFarPlane; }
+
+    glm::mat4 getSpotLightMatrix() const { return spotLightMatrix; }
+
+    glm::vec3 getSpotLightPos() const;
+
+    glm::vec3 getSpotLightDir() const;
+
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
 
@@ -153,7 +168,14 @@ private:
     // ---------- Shadow Mapping ----------
     void initShadowMap();
     void renderShadowMap();
+    void initPointShadowMap();
+    void renderPointShadowMap();
+    void initSpotShadowMap();
+    void renderSpotShadowMap();
     void updateLightMatrices();
+    glm::vec3 computePointLightPos() const;
+    glm::vec3 computeSpotLightPos() const;
+    glm::vec3 computeSpotLightDir() const;
 
     // Train position and orientation for spotlight
     Pnt3f trainPosition;
@@ -163,6 +185,19 @@ private:
     GLuint shadowFBO = 0;
     GLuint shadowDepthMap = 0;
     int shadowMapResolution = 2048;
+    GLuint pointShadowFBO = 0;
+    GLuint pointShadowDepthMap = 0;
+    int pointShadowMapResolution = 1024;
+    float pointShadowNearPlane = 1.0f;
+    float pointShadowFarPlane = 800.0f;
+    Shader* pointShadowShader = nullptr;
+    GLuint spotShadowFBO = 0;
+    GLuint spotShadowDepthMap = 0;
+    int spotShadowMapResolution = 2048;
+    float spotShadowNearPlane = 1.0f;
+    float spotShadowFarPlane = 400.0f;
+    Shader* spotShadowShader = nullptr;
+    glm::mat4 spotLightMatrix{ 1.0f };
     glm::mat4 lightView{ 1.0f };
     glm::mat4 lightProj{ 1.0f };
     glm::mat4 lightSpaceMatrix{ 1.0f };

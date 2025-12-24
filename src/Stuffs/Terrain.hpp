@@ -386,7 +386,16 @@ public:
     void draw(const glm::mat4& view, const glm::mat4& proj,
               const glm::mat4& lightSpace, GLuint shadowMap,
               const glm::vec3& lightDir, const glm::vec3& viewPos,
-              bool enableShadow) {
+              bool enableShadow, bool enableLight,
+              // Point light inputs
+              const glm::vec3& pointLightPos, GLuint pointShadowMap,
+              float pointFarPlane, bool enablePointShadow,
+              bool enablePointLight,
+              // Spot light inputs
+              const glm::vec3& spotLightPos, const glm::vec3& spotLightDir,
+              const glm::mat4& spotLightMatrix, GLuint spotShadowMap,
+              float spotFarPlane, float spotInnerCos, float spotOuterCos,
+              bool enableSpotShadow, bool enableSpotLight) {
         if (!plane)
             return;
 
@@ -414,16 +423,79 @@ public:
                      glm::value_ptr(viewPos));
         glUniform1i(glGetUniformLocation(shader->Program, "u_enableShadow"),
                     enableShadow ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableLight"),
+                    enableLight ? 1 : 0);
+
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_pointLightPos"),
+                     1, glm::value_ptr(pointLightPos));
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enablePointLight"),
+                    enablePointLight ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(shader->Program, "u_enablePointShadow"),
+            enablePointShadow ? 1 : 0);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_pointFarPlane"),
+                    pointFarPlane);
+
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_spotLightPos"), 1,
+                     glm::value_ptr(spotLightPos));
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_spotLightDir"), 1,
+                     glm::value_ptr(spotLightDir));
+        glUniformMatrix4fv(
+            glGetUniformLocation(shader->Program, "u_spotLightMatrix"), 1,
+            GL_FALSE, glm::value_ptr(spotLightMatrix));
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotFarPlane"),
+                    spotFarPlane);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotInnerCos"),
+                    spotInnerCos);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotOuterCos"),
+                    spotOuterCos);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableSpotShadow"),
+                    enableSpotShadow ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableSpotLight"),
+                    enableSpotLight ? 1 : 0);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, shadowMap);
         glUniform1i(glGetUniformLocation(shader->Program, "u_shadowMap"), 0);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, pointShadowMap);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_pointShadowMap"),
+                    1);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, spotShadowMap);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_spotShadowMap"),
+                    2);
 
         glBindVertexArray(plane->vao);
         glDrawElements(GL_TRIANGLES, plane->element_amount, GL_UNSIGNED_INT, 0);
         glBindVertexArray(0);
 
         glUseProgram(0);
+    }
+
+    void drawPointShadow(Shader* depthShader, const glm::mat4& lightMatrix,
+                         const glm::vec3& lightPos, float farPlane) {
+        if (!plane || !depthShader)
+            return;
+
+        depthShader->Use();
+        glm::mat4 model = getModelMatrix();
+        glUniformMatrix4fv(
+            glGetUniformLocation(depthShader->Program, "u_model"), 1, GL_FALSE,
+            glm::value_ptr(model));
+        glUniformMatrix4fv(
+            glGetUniformLocation(depthShader->Program, "u_lightMatrix"), 1,
+            GL_FALSE, glm::value_ptr(lightMatrix));
+        glUniform3fv(glGetUniformLocation(depthShader->Program, "u_lightPos"),
+                     1, glm::value_ptr(lightPos));
+        glUniform1f(glGetUniformLocation(depthShader->Program, "u_farPlane"),
+                    farPlane);
+
+        glBindVertexArray(plane->vao);
+        glDrawElements(GL_TRIANGLES, plane->element_amount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
     }
 
     void drawDepth() {
