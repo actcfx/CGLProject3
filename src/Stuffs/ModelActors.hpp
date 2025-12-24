@@ -128,3 +128,36 @@ public:
         drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
     }
 };
+
+class Jet : public ModelActor {
+public:
+   explicit Jet(TrainView* owner);
+
+    void draw(const glm::vec3& position, float yawRadians) {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, position);
+        model = glm::rotate(model, yawRadians + glm::radians(180.0f), glm::vec3(0, 1, 0));
+        drawInternal(model, false);
+    }
+
+    void draw(const glm::mat4& modelMatrix, bool doingShadows,
+              float smokeStart, float smokeEnd) {
+        drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
+    }
+};
+
+class Soldier : public ModelActor {
+public:
+    explicit Soldier(TrainView* owner);
+
+    void draw(const glm::vec3& position) {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, position);
+        drawInternal(model, false);
+    }
+
+    void draw(const glm::mat4& modelMatrix, bool doingShadows,
+              float smokeStart, float smokeEnd) {
+        drawInternal(modelMatrix, doingShadows, smokeStart, smokeEnd);
+    }
+};

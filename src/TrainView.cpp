@@ -184,7 +184,9 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     mcVillager = new McVillager(this);
     tunnel = new Tunnel(this);
     ghast = new Ghast(this);
+    jet = new Jet(this);
     tnt = new TNT(this);
+    soldier = new Soldier(this);
     ghastPosition = glm::vec3(-80.0f, 100.0f, 80.0f);
     const glm::vec3 ghastRange(30.0f, 20.0f, 30.0f);
     ghastMinBounds = ghastPosition - ghastRange;
@@ -1352,7 +1354,6 @@ void TrainView::updateGhastMotion() {
         glm::vec3 toVillager = villagerWorldPos - mouth;
         if (glm::dot(toVillager, toVillager) > 1e-3f) {
             glm::vec3 fireDir = glm::normalize(toVillager);
-            ghastYaw = computeYaw(fireDir, ghastYaw);
             spawnGhastFireball(mouth, fireDir);
         }
         ghastFireCooldown = ghastFireInterval;
@@ -1419,11 +1420,16 @@ void TrainView::drawStuff(bool doingShadows) {
         mcFox->draw(glm::vec3(-20, -10, -20));
     if (tunnel)
         tunnel->draw(glm::vec3(80, -30, 80));
-    if (ghast) {
+    if (ghast && tw->minecraftButton->value()) {
         if (!doingShadows)
             updateGhastMotion();
         ghast->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
     }
+    if (jet && !tw->minecraftButton->value()) {
+        if (!doingShadows)
+            updateGhastMotion();
+        jet->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
+    }   
     drawGhastFireballs(doingShadows);
 
 #ifdef EXAMPLE_SOLUTION
@@ -2549,7 +2555,7 @@ void TrainView::drawTrain(bool doingShadows) {
         villagerWorldPos = glm::vec3(villagerWorld);
         villagerPosValid = true;
 
-        mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
+        soldier->draw(modelMatrix, doingShadows, smokeStartDistance,
                         smokeEndDistance);
     }
 }

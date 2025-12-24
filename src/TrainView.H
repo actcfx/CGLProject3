@@ -129,6 +129,8 @@ public:
     Tunnel* tunnel = nullptr;
     Ghast* ghast = nullptr;
     TNT* tnt = nullptr;
+    Jet* jet = nullptr;
+    Soldier* soldier = nullptr;
     
     float getSmokeStart() const { return smokeStartDistance; }
     float getSmokeEnd() const { return smokeEndDistance; }

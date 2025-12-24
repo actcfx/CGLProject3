@@ -177,3 +177,9 @@ Ghast::Ghast(TrainView* owner)
 
 TNT::TNT(TrainView* owner)
     : ModelActor(owner, "./assets/models/minecraftTNTBall/scene.gltf", 15.0f) {}
+
+Jet::Jet(TrainView* owner)
+    : ModelActor(owner, "./assets/models/fighterJet/scene.gltf", 0.3f) {}
+
+Soldier::Soldier(TrainView* owner)
+    : ModelActor(owner, "./assets/models/soldier/scene.gltf", 0.1f) {}
