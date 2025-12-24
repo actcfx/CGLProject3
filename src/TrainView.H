@@ -34,9 +34,11 @@ class ControlPoint;
 #include "Utilities/Pnt3f.H"
 
 #include <chrono>
-#include <glm/vec3.hpp>
 #include <glm/gtc/constants.hpp>
+#include <glm/mat4x4.hpp>
+#include <glm/vec3.hpp>
 #include <vector>
+
 
 //#######################################################################
 // TODO
@@ -61,17 +63,17 @@ class ControlPoint;
 #include "RenderUtilities/Shader.h"
 #include "RenderUtilities/Texture.h"
 
+#include "RenderUtilities/Model.h"
 #include "Shaders/Church.hpp"
 #include "Shaders/FrameBuffer.hpp"
 #include "Shaders/Skybox.hpp"
 #include "Shaders/Water.hpp"
-#include "Stuffs/Terrain.hpp"
-#include "RenderUtilities/Model.h"
 #include "Stuffs/ModelActors.hpp"
+#include "Stuffs/Terrain.hpp"
+
 
 class TotemOfUndying;
 class SubdivisionSphere;
-
 
 class TrainView : public Fl_Gl_Window {
     friend class Water;
@@ -92,7 +94,6 @@ public:
     void drawTrack(bool doingShadows);
     void drawTrain(bool doingShadows);
     void drawOden(bool doingShadows);
-
 
     // setup the projection - assuming that the projection stack has been
     // cleared for you
@@ -131,20 +132,41 @@ public:
     TNT* tnt = nullptr;
     Jet* jet = nullptr;
     Soldier* soldier = nullptr;
-    
+
     float getSmokeStart() const { return smokeStartDistance; }
+
     float getSmokeEnd() const { return smokeEndDistance; }
+
+    GLuint getShadowMap() const { return shadowDepthMap; }
+
+    glm::mat4 getLightSpaceMatrix() const { return lightSpaceMatrix; }
+
+    glm::vec3 getDirLightDir() const { return dirLightDir; }
 
     // Accessors for the train's current frame
     Pnt3f getTrainForward() const { return trainForward; }
+
 private:
     // ---------- Lighting ----------
     void setLighting();
+
+    // ---------- Shadow Mapping ----------
+    void initShadowMap();
+    void renderShadowMap();
+    void updateLightMatrices();
 
     // Train position and orientation for spotlight
     Pnt3f trainPosition;
     Pnt3f trainForward;
     Pnt3f trainUp;
+
+    GLuint shadowFBO = 0;
+    GLuint shadowDepthMap = 0;
+    int shadowMapResolution = 2048;
+    glm::mat4 lightView{ 1.0f };
+    glm::mat4 lightProj{ 1.0f };
+    glm::mat4 lightSpaceMatrix{ 1.0f };
+    glm::vec3 dirLightDir{ -0.3f, -1.0f, -0.4f };
 
     float wheelAngle = 0.0f;
     bool wheelParamInitialized = false;
@@ -191,17 +213,17 @@ private:
     float smokeEndDistance = 800.0f;
 
     // ---------- Ghast motion ----------
-    glm::vec3 ghastPosition { -80.0f, 100.0f, 80.0f };
-    glm::vec3 ghastDirection { 1.0f, 0.0f, 0.0f };
-    glm::vec3 ghastMinBounds { -110.0f, 70.0f, 50.0f };
-    glm::vec3 ghastMaxBounds { -50.0f, 130.0f, 110.0f };
+    glm::vec3 ghastPosition{ -80.0f, 100.0f, 80.0f };
+    glm::vec3 ghastDirection{ 1.0f, 0.0f, 0.0f };
+    glm::vec3 ghastMinBounds{ -110.0f, 70.0f, 50.0f };
+    glm::vec3 ghastMaxBounds{ -50.0f, 130.0f, 110.0f };
     float ghastSpeed = 35.0f;
     float ghastYaw = glm::half_pi<float>();
     float ghastBaseYawOffset = glm::half_pi<float>();
     float ghastModeDuration = 5.0f;
     float ghastTimeLeft = 0.0f;
-    std::chrono::steady_clock::time_point ghastLastUpdate {};
-    glm::vec3 villagerWorldPos { 0.0f };
+    std::chrono::steady_clock::time_point ghastLastUpdate{};
+    glm::vec3 villagerWorldPos{ 0.0f };
     bool villagerPosValid = false;
 
     struct GhastFireball {
@@ -209,12 +231,13 @@ private:
         glm::vec3 vel;
         float ttl;
     };
+
     std::vector<GhastFireball> ghastFireballs;
     float ghastFireInterval = 3.5f;
     float ghastFireCooldown = 0.0f;
     float ghastFireSpeed = 180.0f;
     float ghastFireLifetime = 8.0f;
-    glm::vec3 ghastMouthOffset { 0.0f, 10.0f, 0.0f };
+    glm::vec3 ghastMouthOffset{ 0.0f, 10.0f, 0.0f };
     float ghastProjectileRadius = 6.0f;
     float villagerHitRadius = 6.0f;
     float trainHitRadius = 12.0f;

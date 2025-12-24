@@ -588,7 +588,17 @@ void Water::renderReflection(TrainView* tw) {
 
     // Draw terrain in reflection (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        tw->terrain->draw();
+        glm::mat4 view_matrix;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+        glm::mat4 projection_matrix;
+        glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
+        glm::mat4 invView = glm::inverse(view_matrix);
+        glm::vec3 cameraPos = glm::vec3(invView[3]);
+        bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
+                            tw->tw->directionalLightButton->value() != 0;
+        tw->terrain->draw(view_matrix, projection_matrix,
+                          tw->getLightSpaceMatrix(), tw->getShadowMap(),
+                          tw->getDirLightDir(), cameraPos, enableShadow);
     }
 
     glEnable(GL_LIGHTING);
@@ -656,10 +666,19 @@ void Water::renderRefraction(TrainView* tw) {
     glEnable(GL_LIGHTING);
     setupObjects();
 
-    // Draw terrain in refraction
     // Draw terrain in refraction (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        tw->terrain->draw();
+        glm::mat4 view_matrix;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+        glm::mat4 projection_matrix;
+        glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
+        glm::mat4 invView = glm::inverse(view_matrix);
+        glm::vec3 cameraPos = glm::vec3(invView[3]);
+        bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
+                            tw->tw->directionalLightButton->value() != 0;
+        tw->terrain->draw(view_matrix, projection_matrix,
+                          tw->getLightSpaceMatrix(), tw->getShadowMap(),
+                          tw->getDirLightDir(), cameraPos, enableShadow);
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points
