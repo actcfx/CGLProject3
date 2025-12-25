@@ -20,6 +20,9 @@ uniform sampler2D u_shadowMap;
 uniform vec3 u_lightDir;
 uniform bool u_enableShadow;
 
+uniform vec2 u_smokeParams; // x=start, y=end
+uniform int smokeEnabled;
+
 out vec4 fragColor;
 
 float computeShadow(vec3 normal, vec4 lightSpacePos) {
@@ -120,5 +123,12 @@ void main() {
     }
 
     color *= (1.0 - 0.7 * shadow);
+
+    if (smokeEnabled != 0) {
+        float distEye = length(v_posEye);
+        float denom = max(u_smokeParams.y - u_smokeParams.x, 1e-5);
+        float fogFactor = clamp((u_smokeParams.y - distEye) / denom, 0.0, 1.0);
+        color = mix(vec3(1.0), color, fogFactor);
+    }
     fragColor = vec4(color, v_color.a);
 }

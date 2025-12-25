@@ -2100,6 +2100,22 @@ void TrainView::drawStuff(bool doingShadows) {
                 directionalLightOn ? 1 : 0);
 
             {
+                const GLint smokeParamsLoc = glGetUniformLocation(
+                    odenBumpShader->Program, "u_smokeParams");
+                if (smokeParamsLoc >= 0) {
+                    glUniform2f(smokeParamsLoc, smokeStartDistance,
+                               smokeEndDistance);
+                }
+
+                const GLint smokeEnabledLoc = glGetUniformLocation(
+                    odenBumpShader->Program, "smokeEnabled");
+                if (smokeEnabledLoc >= 0 && tw && tw->smokeButton) {
+                    glUniform1i(smokeEnabledLoc,
+                                tw->smokeButton->value() ? 1 : 0);
+                }
+            }
+
+            {
                 GLint prevActiveTexture = GL_TEXTURE0;
                 glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
                 glActiveTexture(GL_TEXTURE10);
@@ -3516,6 +3532,20 @@ void TrainView::drawOden(bool doingShadows) {
         glUniform1i(
             glGetUniformLocation(odenBumpShader->Program, "u_enableShadow"),
             directionalLightOn ? 1 : 0);
+
+        {
+            const GLint smokeParamsLoc =
+                glGetUniformLocation(odenBumpShader->Program, "u_smokeParams");
+            if (smokeParamsLoc >= 0) {
+                glUniform2f(smokeParamsLoc, smokeStartDistance, smokeEndDistance);
+            }
+
+            const GLint smokeEnabledLoc =
+                glGetUniformLocation(odenBumpShader->Program, "smokeEnabled");
+            if (smokeEnabledLoc >= 0 && tw && tw->smokeButton) {
+                glUniform1i(smokeEnabledLoc, tw->smokeButton->value() ? 1 : 0);
+            }
+        }
 
         {
             GLint prevActiveTexture = GL_TEXTURE0;
