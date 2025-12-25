@@ -1006,9 +1006,12 @@ void TrainView::drawPlane() {
     GLint shadowMapLoc =
         glGetUniformLocation(this->shader->Program, "u_shadowMap");
     if (shadowMapLoc >= 0) {
+        GLint prevActiveTexture = GL_TEXTURE0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
         glActiveTexture(GL_TEXTURE10);
         glBindTexture(GL_TEXTURE_2D, getShadowMap());
         glUniform1i(shadowMapLoc, 10);
+        glActiveTexture(prevActiveTexture);
     }
 
     GLint smokeLoc =
@@ -1167,6 +1170,11 @@ void TrainView::draw() {
         tw && tw->pointLightButton && tw->pointLightButton->value();
     const bool spotLightOn =
         tw && tw->spotLightButton && tw->spotLightButton->value();
+
+    // Post-processing leaves a GLSL program bound (full-screen shader).
+    // Shadow-map rendering uses fixed-function transforms + mixed draw paths,
+    // so ensure we start shadow passes with program 0.
+    glUseProgram(0);
 
     if (directionalLightOn) {
         renderShadowMap();
@@ -1537,12 +1545,18 @@ void TrainView::draw() {
             --remainingEffects;
         }
 
+        // Ensure we don't leak a post-process shader into the next frame.
+        glUseProgram(0);
+        glActiveTexture(GL_TEXTURE0);
+
         if (fogWasEnabled) {
             glEnable(GL_FOG);
         }
     }
 
     // Unbind
+    glUseProgram(0);
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, 0);
 }
 
@@ -2052,11 +2066,16 @@ void TrainView::drawStuff(bool doingShadows) {
                 glGetUniformLocation(odenBumpShader->Program, "u_enableShadow"),
                 directionalLightOn ? 1 : 0);
 
-            glActiveTexture(GL_TEXTURE10);
-            glBindTexture(GL_TEXTURE_2D, getShadowMap());
-            glUniform1i(
-                glGetUniformLocation(odenBumpShader->Program, "u_shadowMap"),
-                10);
+            {
+                GLint prevActiveTexture = GL_TEXTURE0;
+                glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+                glActiveTexture(GL_TEXTURE10);
+                glBindTexture(GL_TEXTURE_2D, getShadowMap());
+                glUniform1i(glGetUniformLocation(odenBumpShader->Program,
+                                                 "u_shadowMap"),
+                            10);
+                glActiveTexture(prevActiveTexture);
+            }
         }
 
         subdivisionSphere->draw(doingShadows);
@@ -3465,10 +3484,16 @@ void TrainView::drawOden(bool doingShadows) {
             glGetUniformLocation(odenBumpShader->Program, "u_enableShadow"),
             directionalLightOn ? 1 : 0);
 
-        glActiveTexture(GL_TEXTURE10);
-        glBindTexture(GL_TEXTURE_2D, getShadowMap());
-        glUniform1i(
-            glGetUniformLocation(odenBumpShader->Program, "u_shadowMap"), 10);
+        {
+            GLint prevActiveTexture = GL_TEXTURE0;
+            glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+            glActiveTexture(GL_TEXTURE10);
+            glBindTexture(GL_TEXTURE_2D, getShadowMap());
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_shadowMap"),
+                10);
+            glActiveTexture(prevActiveTexture);
+        }
     }
 
     // ----------- Tofu --------------

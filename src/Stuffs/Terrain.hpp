@@ -402,6 +402,9 @@ public:
         if (!plane)
             return;
 
+        GLint prevActiveTexture = GL_TEXTURE0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+
         if (!shader) {
             shader = new Shader("./shaders/terrain.vert", nullptr, nullptr,
                                 nullptr, "./shaders/terrain.frag");
@@ -485,6 +488,8 @@ public:
         glBindVertexArray(0);
 
         glUseProgram(0);
+
+        glActiveTexture(prevActiveTexture);
     }
 
     void drawPointShadow(Shader* depthShader, const glm::mat4& lightMatrix,
