@@ -108,6 +108,8 @@ public:
 
     Fl_Button* stippleButton;
 
+    Fl_Button* grayscaleButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Value_Slider* sphereRecursionSlider;
@@ -118,9 +120,10 @@ public:
 
     Fl_Button* bgmButton;
 
-    Fl_Button* smokeButton; 
+    Fl_Button* smokeButton;
 
-    float physicsSpeedScale = 1.0f;  // persistent inertia multiplier for simple physics
+    float physicsSpeedScale =
+        1.0f;  // persistent inertia multiplier for simple physics
     // we have other widgets as part of the sample solution
     // this is not for 559 students to know about
 #ifdef EXAMPLE_SOLUTION

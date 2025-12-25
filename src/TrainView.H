@@ -241,6 +241,7 @@ private:
     Shader* paintShader = nullptr;
     Shader* crosshatchShader = nullptr;
     Shader* stippleShader = nullptr;
+    Shader* grayscaleShader = nullptr;
 
     void initFrameBufferShader();
 

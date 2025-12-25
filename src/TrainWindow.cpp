@@ -29,9 +29,10 @@
 #include <FL/fl.h>
 
 // for the 3D models
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include <assimp/scene.h>
+#include <assimp/Importer.hpp>
+
 
 // for using the real time clock
 #include <time.h>
@@ -216,6 +217,11 @@ TrainWindow::TrainWindow(const int x, const int y)
         smokeButton = new Fl_Button(735, pty, 60, 20, "Smoke");
         togglify(smokeButton, 0);
 
+        pty += 25;
+
+        grayscaleButton = new Fl_Button(605, pty, 60, 20, "Gray");
+        togglify(grayscaleButton, 0);
+
         pty += 30;
 
         // ---------- Physics Button ----------
@@ -228,10 +234,8 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         pty += 30;
 
-
-// (deleted) ---------- Reflection/Refraction Ratio Slider ----------
-        reflectRefractSlider =
-            new Fl_Value_Slider(700, pty, 0, 0, "");
+        // (deleted) ---------- Reflection/Refraction Ratio Slider ----------
+        reflectRefractSlider = new Fl_Value_Slider(700, pty, 0, 0, "");
         reflectRefractSlider->range(0.0, 1.0);
         reflectRefractSlider->value(0.7);
         reflectRefractSlider->align(FL_ALIGN_LEFT);

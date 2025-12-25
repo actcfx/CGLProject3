@@ -806,6 +806,11 @@ void TrainView::initFrameBufferShader() {
         stippleShader = new Shader("./shaders/stipple.vert", nullptr, nullptr,
                                    nullptr, "./shaders/stipple.frag");
 
+    if (!grayscaleShader)
+        grayscaleShader =
+            new Shader("./shaders/grayscale.vert", nullptr, nullptr, nullptr,
+                       "./shaders/grayscale.frag");
+
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
         mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
@@ -1079,9 +1084,12 @@ void TrainView::draw() {
     const bool enablePaint = tw->paintButton->value() != 0;
     const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
     const bool enableStipple = tw->stippleButton->value() != 0;
+    const bool enableGrayscale =
+        tw->grayscaleButton && tw->grayscaleButton->value() != 0;
+    const bool smokeOn = tw && tw->smokeButton && tw->smokeButton->value();
     const bool postProcessEnabled = enablePixelize || enableToon ||
                                     enablePaint || enableCrosshatch ||
-                                    enableStipple;
+                                    enableStipple || enableGrayscale;
 
     const bool directionalLightOn =
         tw && tw->directionalLightButton && tw->directionalLightButton->value();
@@ -1090,15 +1098,21 @@ void TrainView::draw() {
     const bool spotLightOn =
         tw && tw->spotLightButton && tw->spotLightButton->value();
 
-    if (directionalLightOn) {
+    // Keep lights active, but skip shadow rendering while smoke is enabled to
+    // avoid harsh banding through fog.
+    const bool directionalShadowOn = directionalLightOn && !smokeOn;
+    const bool pointShadowOn = pointLightOn && !smokeOn;
+    const bool spotShadowOn = spotLightOn && !smokeOn;
+
+    if (directionalShadowOn) {
         renderShadowMap();
     }
 
-    if (pointLightOn) {
+    if (pointShadowOn) {
         renderPointShadowMap();
     }
 
-    if (spotLightOn) {
+    if (spotShadowOn) {
         renderSpotShadowMap();
     }
 
@@ -1150,8 +1164,9 @@ void TrainView::draw() {
 
     drawStuff();
 
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
+    // this time drawing is for shadows (except for top view). Skip when smoke
+    // effect is active to avoid banding through fog.
+    if (!smokeOn && !tw->topCam->value()) {
         setupShadows();
         drawStuff(true);
         unsetupShadows();
@@ -1188,15 +1203,15 @@ void TrainView::draw() {
 
     // ---------- Draw the terrain ----------
     glm::vec3 cameraPos = totemCameraPos;
-    bool enableShadow = directionalLightOn;
+    bool enableShadow = directionalShadowOn;
     bool enableLight = directionalLightOn;
     glm::vec3 pointLightPos = getPointLightPos();
     bool enablePointLight = pointLightOn;
-    bool enablePointShadow = pointLightOn;
+    bool enablePointShadow = pointShadowOn;
     glm::vec3 spotLightPos = getSpotLightPos();
     glm::vec3 spotLightDir = getSpotLightDir();
     bool enableSpotLight = spotLightOn;
-    bool enableSpotShadow = spotLightOn;
+    bool enableSpotShadow = spotShadowOn;
     float spotInnerCos = glm::cos(glm::radians(22.0f));
     float spotOuterCos = glm::cos(glm::radians(32.0f));
     glm::vec4 noClipPlane(0.0f);
@@ -1217,10 +1232,10 @@ void TrainView::draw() {
     if (postProcessEnabled) {
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
-        int remainingEffects = (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-                               (enablePixelize ? 1 : 0) +
-                               (enableCrosshatch ? 1 : 0) +
-                               (enableStipple ? 1 : 0);
+        int remainingEffects =
+            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
+            (enableStipple ? 1 : 0) + (enableGrayscale ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                                const std::function<void()>& setUniforms,
@@ -1342,6 +1357,19 @@ void TrainView::draw() {
                                                      "screenHeight"),
                                 (float)h());
                     glUniform1i(glGetUniformLocation(pixelShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableGrayscale) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                grayscaleShader,
+                [&]() {
+                    glUniform1i(glGetUniformLocation(grayscaleShader->Program,
                                                      "screenTexture"),
                                 0);
                 },
@@ -2255,6 +2283,173 @@ void TrainView::drawTrack(bool doingShadows) {
         glVertex3f(v8.x, v8.y, v8.z);
         glVertex3f(v7.x, v7.y, v7.z);
         glEnd();
+    }
+
+    // ---------- Bridge decking on steep slopes ----------
+    const float steepSlopeThreshold = 0.35f;  // cos^-1(0.35) ~ 69 deg
+    const float deckWidth = GUAGE * 1.6f;
+    const float deckThickness = 0.6f;
+    const float deckDrop = railHeight + 0.3f;  // slightly below the rail top
+    const float guardHeight = 2.5f;
+    const float guardThickness = 0.25f;
+
+    auto scaleVec = [](const Pnt3f& v, float s) {
+        return Pnt3f(v.x * s, v.y * s, v.z * s);
+    };
+
+    for (size_t idx = 0; idx < trackCenters.size(); ++idx) {
+        size_t nextIdx = (idx + 1) % trackCenters.size();
+
+        const Pnt3f& tangent = trackTangents[idx];
+        float slope = std::fabs(tangent.y);
+        if (slope < steepSlopeThreshold)
+            continue;
+
+        const Pnt3f& right = rightVectors[idx];
+        const Pnt3f& up = upVectors[idx];
+
+        Pnt3f start = trackCenters[idx];
+        Pnt3f end = trackCenters[nextIdx];
+
+        Pnt3f halfWidth = scaleVec(right, deckWidth * 0.5f);
+        Pnt3f upOffsetTop = scaleVec(up, deckDrop);
+        Pnt3f upOffsetBottom = scaleVec(up, deckDrop + deckThickness);
+
+        // Top rectangle
+        Pnt3f sTopL = start - halfWidth - upOffsetTop;
+        Pnt3f sTopR = start + halfWidth - upOffsetTop;
+        Pnt3f eTopL = end - halfWidth - upOffsetTop;
+        Pnt3f eTopR = end + halfWidth - upOffsetTop;
+
+        // Bottom rectangle
+        Pnt3f sBotL = start - halfWidth - upOffsetBottom;
+        Pnt3f sBotR = start + halfWidth - upOffsetBottom;
+        Pnt3f eBotL = end - halfWidth - upOffsetBottom;
+        Pnt3f eBotR = end + halfWidth - upOffsetBottom;
+
+        Pnt3f segment = end - start;
+        float segLen = std::sqrt(segment.x * segment.x + segment.y * segment.y +
+                                 segment.z * segment.z);
+        Pnt3f segDir = (segLen > 1e-6f)
+                           ? Pnt3f(segment.x / segLen, segment.y / segLen,
+                                   segment.z / segLen)
+                           : tangent;
+
+        if (!doingShadows) {
+            glColor3ub(170, 126, 78);  // wood tone for deck
+        }
+
+        glBegin(GL_QUADS);
+        // Top face
+        glNormal3f(up.x, up.y, up.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+
+        // Bottom face
+        glNormal3f(-up.x, -up.y, -up.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+
+        // Left face
+        glNormal3f(-right.x, -right.y, -right.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+
+        // Right face
+        glNormal3f(right.x, right.y, right.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+
+        // Front face
+        glNormal3f(segDir.x, segDir.y, segDir.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+
+        // Back face
+        glNormal3f(-segDir.x, -segDir.y, -segDir.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+        glEnd();
+
+        // Guardrails on both sides of the deck
+        if (!doingShadows) {
+            glColor3ub(200, 200, 200);
+        }
+
+        Pnt3f upGuard = scaleVec(up, guardHeight);
+        Pnt3f railOffset = scaleVec(right, guardThickness);
+
+        auto drawGuard = [&](bool leftSide) {
+            float sign = leftSide ? -1.0f : 1.0f;
+            Pnt3f sideOffset = scaleVec(right, sign * (deckWidth * 0.5f));
+            Pnt3f baseStart = start + sideOffset - upOffsetTop;
+            Pnt3f baseEnd = end + sideOffset - upOffsetTop;
+            Pnt3f outward = scaleVec(right, sign * guardThickness);
+
+            Pnt3f innerStart = baseStart;
+            Pnt3f innerEnd = baseEnd;
+            Pnt3f outerStart = baseStart + outward;
+            Pnt3f outerEnd = baseEnd + outward;
+
+            Pnt3f innerStartTop = innerStart + upGuard;
+            Pnt3f innerEndTop = innerEnd + upGuard;
+            Pnt3f outerStartTop = outerStart + upGuard;
+            Pnt3f outerEndTop = outerEnd + upGuard;
+
+            Pnt3f normalSide = scaleVec(right, sign);
+
+            glBegin(GL_QUADS);
+            // Outside face
+            glNormal3f(normalSide.x, normalSide.y, normalSide.z);
+            glVertex3f(outerStart.x, outerStart.y, outerStart.z);
+            glVertex3f(outerEnd.x, outerEnd.y, outerEnd.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+
+            // Inside face
+            glNormal3f(-normalSide.x, -normalSide.y, -normalSide.z);
+            glVertex3f(innerEnd.x, innerEnd.y, innerEnd.z);
+            glVertex3f(innerStart.x, innerStart.y, innerStart.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+
+            // Top face
+            glNormal3f(up.x, up.y, up.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+
+            // Front face
+            glNormal3f(segDir.x, segDir.y, segDir.z);
+            glVertex3f(innerStart.x, innerStart.y, innerStart.z);
+            glVertex3f(outerStart.x, outerStart.y, outerStart.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+
+            // Back face
+            glNormal3f(-segDir.x, -segDir.y, -segDir.z);
+            glVertex3f(outerEnd.x, outerEnd.y, outerEnd.z);
+            glVertex3f(innerEnd.x, innerEnd.y, innerEnd.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glEnd();
+        };
+
+        drawGuard(true);
+        drawGuard(false);
     }
 
     // ---------- Draw Trestles (Support Pillars) ----------
