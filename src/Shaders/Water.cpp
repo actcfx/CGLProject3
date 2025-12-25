@@ -609,10 +609,15 @@ void Water::renderReflection(TrainView* tw) {
         float spotInnerCos = glm::cos(glm::radians(22.0f));
         float spotOuterCos = glm::cos(glm::radians(32.0f));
         glm::vec4 clipPlane(0.0f, 1.0f, 0.0f, -waterHeight);
+        glm::vec2 smokeParams(tw->getSmokeStart(), tw->getSmokeEnd());
+        bool smokeEnabled = (tw->tw && tw->tw->smokeButton)
+                                ? (tw->tw->smokeButton->value() != 0)
+                                : false;
         tw->terrain->draw(
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
-            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
-            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, smokeParams,
+            smokeEnabled, enableShadow, enableLight, pointLightPos,
+            tw->getPointShadowMap(),
             tw->getPointFarPlane(), enablePointShadow, enablePointLight,
             spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
             tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
@@ -707,10 +712,15 @@ void Water::renderRefraction(TrainView* tw) {
         float spotInnerCos = glm::cos(glm::radians(22.0f));
         float spotOuterCos = glm::cos(glm::radians(32.0f));
         glm::vec4 clipPlane(0.0f, -1.0f, 0.0f, waterHeight);
+        glm::vec2 smokeParams(tw->getSmokeStart(), tw->getSmokeEnd());
+        bool smokeEnabled = (tw->tw && tw->tw->smokeButton)
+                                ? (tw->tw->smokeButton->value() != 0)
+                                : false;
         tw->terrain->draw(
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
-            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
-            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, smokeParams,
+            smokeEnabled, enableShadow, enableLight, pointLightPos,
+            tw->getPointShadowMap(),
             tw->getPointFarPlane(), enablePointShadow, enablePointLight,
             spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
             tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,

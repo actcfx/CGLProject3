@@ -219,6 +219,37 @@ public:
             glGetUniformLocation(this->shader->Program, "u_projection"), 1,
             GL_FALSE, &projectionMatrix[0][0]);
 
+        // Directional shadow map inputs
+        if (owner) {
+            const glm::mat4 lightSpace = owner->getLightSpaceMatrix();
+            glUniformMatrix4fv(
+                glGetUniformLocation(this->shader->Program, "u_lightSpace"), 1,
+                GL_FALSE, &lightSpace[0][0]);
+
+            const GLint dirLoc =
+                glGetUniformLocation(this->shader->Program, "u_lightDir");
+            if (dirLoc >= 0) {
+                glm::vec3 dir = owner->getDirLightDir();
+                glUniform3fv(dirLoc, 1, &dir[0]);
+            }
+
+            const bool shadowOn = owner->tw && owner->tw->directionalLightButton &&
+                                  owner->tw->directionalLightButton->value() != 0;
+            const GLint enableShadowLoc =
+                glGetUniformLocation(this->shader->Program, "u_enableShadow");
+            if (enableShadowLoc >= 0) {
+                glUniform1i(enableShadowLoc, shadowOn ? 1 : 0);
+            }
+
+            const GLint shadowMapLoc =
+                glGetUniformLocation(this->shader->Program, "u_shadowMap");
+            if (shadowMapLoc >= 0) {
+                glActiveTexture(GL_TEXTURE10);
+                glBindTexture(GL_TEXTURE_2D, owner->getShadowMap());
+                glUniform1i(shadowMapLoc, 10);
+            }
+        }
+
         const GLint camLoc =
             glGetUniformLocation(this->shader->Program, "u_cameraPos");
         if (camLoc >= 0) {
@@ -230,7 +261,7 @@ public:
             glUniform2f(smokeLoc, smokeStart, smokeEnd);
         }
         const GLint smokeEnabledLoc =
-        glGetUniformLocation(shader->Program, "smokeEnabled");
+            glGetUniformLocation(this->shader->Program, "smokeEnabled");
         if (smokeEnabledLoc >= 0 && owner && owner->tw && owner->tw->smokeButton) {
             glUniform1i(smokeEnabledLoc, owner->tw->smokeButton->value() ? 1 : 0);
         }
@@ -238,7 +269,7 @@ public:
         // Bind texture
         this->texture->bind(0);
         glUniform1i(glGetUniformLocation(this->shader->Program, "u_texture"),
-                    0);
+                0);
 
         // Enable blending for transparency
         glEnable(GL_BLEND);

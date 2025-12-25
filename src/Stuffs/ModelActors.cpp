@@ -106,6 +106,36 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
     setMat4("uProjection", projectionMatrix);
     setMat3("uNormalMatrix", normalMatrix);
 
+    // Directional shadow map inputs (so models receive shadows too)
+    if (owner) {
+        setMat4("uLightSpace", owner->getLightSpaceMatrix());
+
+        const GLint dirLoc = glGetUniformLocation(shader->Program, "u_lightDir");
+        if (dirLoc >= 0) {
+            glm::vec3 dir = owner->getDirLightDir();
+            glUniform3fv(dirLoc, 1, &dir[0]);
+        }
+
+        const bool shadowOn = owner->tw && owner->tw->directionalLightButton &&
+                              owner->tw->directionalLightButton->value() != 0;
+        const GLint enableShadowLoc =
+            glGetUniformLocation(shader->Program, "u_enableShadow");
+        if (enableShadowLoc >= 0) {
+            glUniform1i(enableShadowLoc, shadowOn ? 1 : 0);
+        }
+
+        const GLint shadowMapLoc =
+            glGetUniformLocation(shader->Program, "u_shadowMap");
+        if (shadowMapLoc >= 0) {
+            GLint prevActiveTexture;
+            glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+            glActiveTexture(GL_TEXTURE10);
+            glBindTexture(GL_TEXTURE_2D, owner->getShadowMap());
+            glUniform1i(shadowMapLoc, 10);
+            glActiveTexture(prevActiveTexture);
+        }
+    }
+
     const GLint shadowLoc =
         glGetUniformLocation(shader->Program, "uShadowPass");
     if (shadowLoc >= 0) {

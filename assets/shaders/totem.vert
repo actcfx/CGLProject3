@@ -14,12 +14,17 @@ out V_OUT
 uniform mat4 u_model;
 uniform mat4 u_view;
 uniform mat4 u_projection;
+uniform mat4 u_lightSpace;
+
+out vec4 v_lightSpacePos;
 
 void main()
 {
     v_out.position = vec3(u_model * vec4(position, 1.0));
     v_out.normal = mat3(transpose(inverse(u_model))) * normal;
     v_out.texture_coordinate = texture_coordinate;
+
+    v_lightSpacePos = u_lightSpace * vec4(v_out.position, 1.0);
 
     gl_Position = u_projection * u_view * vec4(v_out.position, 1.0);
 }

@@ -386,6 +386,7 @@ public:
     void draw(const glm::mat4& view, const glm::mat4& proj,
               const glm::mat4& lightSpace, GLuint shadowMap,
               const glm::vec3& lightDir, const glm::vec3& viewPos,
+              const glm::vec2& smokeParams, bool smokeEnabled,
               bool enableShadow, bool enableLight,
               // Point light inputs
               const glm::vec3& pointLightPos, GLuint pointShadowMap,
@@ -427,6 +428,11 @@ public:
                      glm::value_ptr(lightDir));
         glUniform3fv(glGetUniformLocation(shader->Program, "u_viewPos"), 1,
                      glm::value_ptr(viewPos));
+
+        glUniform2fv(glGetUniformLocation(shader->Program, "u_smokeParams"), 1,
+                 glm::value_ptr(smokeParams));
+        glUniform1i(glGetUniformLocation(shader->Program, "smokeEnabled"),
+                smokeEnabled ? 1 : 0);
         glUniform1i(glGetUniformLocation(shader->Program, "u_enableShadow"),
                     enableShadow ? 1 : 0);
         glUniform1i(glGetUniformLocation(shader->Program, "u_enableLight"),

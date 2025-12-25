@@ -1157,8 +1157,10 @@ void TrainView::draw() {
 
     drawStuff();
 
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
+    // Legacy stencil "squish" shadows can conflict with shadow mapping
+    // and post-processing; skip them when directional shadow mapping is on
+    // OR when we're doing post-process passes.
+    if (!tw->topCam->value() && !directionalLightOn && !postProcessEnabled) {
         setupShadows();
         drawStuff(true);
         unsetupShadows();
@@ -1207,9 +1209,14 @@ void TrainView::draw() {
     float spotInnerCos = glm::cos(glm::radians(22.0f));
     float spotOuterCos = glm::cos(glm::radians(32.0f));
     glm::vec4 noClipPlane(0.0f);
+    glm::vec2 smokeParams(smokeStartDistance, smokeEndDistance);
+    bool smokeEnabled = (tw && tw->smokeButton) ? (tw->smokeButton->value() != 0)
+                                                : false;
+
     terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
                   shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
-                  enableShadow, enableLight, pointLightPos, getPointShadowMap(),
+                  smokeParams, smokeEnabled, enableShadow, enableLight,
+                  pointLightPos, getPointShadowMap(),
                   getPointFarPlane(), enablePointShadow, enablePointLight,
                   spotLightPos, spotLightDir, getSpotLightMatrix(),
                   getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
@@ -1222,6 +1229,11 @@ void TrainView::draw() {
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
     if (postProcessEnabled) {
+        // Fog is computed during the scene render. Disable it for the full-screen
+        // quad passes to avoid fogging the post-process output.
+        const GLboolean fogWasEnabled = glIsEnabled(GL_FOG);
+        glDisable(GL_FOG);
+
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
         int remainingEffects =
@@ -1367,6 +1379,10 @@ void TrainView::draw() {
                 },
                 isLast);
             --remainingEffects;
+        }
+
+        if (fogWasEnabled) {
+            glEnable(GL_FOG);
         }
     }
 

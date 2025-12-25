@@ -10,6 +10,8 @@ in VS_OUT {
 
 uniform vec3 u_lightDir;
 uniform vec3 u_viewPos;
+uniform vec2 u_smokeParams;
+uniform bool smokeEnabled;
 uniform sampler2D u_shadowMap;
 uniform bool u_enableShadow;
 uniform bool u_enableLight;
@@ -173,5 +175,17 @@ void main() {
     }
 
     vec3 lighting = ambient + dirLight + pointLight + spotLight;
-    FragColor = vec4(lighting, 1.0);
+
+    float smoke = 0.0;
+    if (u_smokeParams.y > u_smokeParams.x && u_smokeParams.x >= 0.0) {
+        float dist = length(u_viewPos - fs_in.worldPos);
+        smoke = clamp((dist - u_smokeParams.x) /
+                          max(u_smokeParams.y - u_smokeParams.x, 0.0001),
+                      0.0, 1.0);
+    }
+    if (!smokeEnabled)
+        smoke = 0.0;
+
+    vec3 finalColor = mix(lighting, vec3(1.0), smoke);
+    FragColor = vec4(finalColor, 1.0);
 }
