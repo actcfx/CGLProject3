@@ -224,6 +224,9 @@ TrainWindow::TrainWindow(const int x, const int y)
         edgeButton = new Fl_Button(670, pty, 60, 20, "Edge");
         togglify(edgeButton, 0);
 
+        aaButton = new Fl_Button(735, pty, 60, 20, "FXAA");
+        togglify(aaButton, 0);
+
         pty += 30;
 
         // ---------- Physics Button ----------

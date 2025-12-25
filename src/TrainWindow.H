@@ -112,6 +112,8 @@ public:
 
     Fl_Button* edgeButton;
 
+    Fl_Button* aaButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Value_Slider* sphereRecursionSlider;

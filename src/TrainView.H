@@ -243,6 +243,7 @@ private:
     Shader* stippleShader = nullptr;
     Shader* grayscaleShader = nullptr;
     Shader* edgeShader = nullptr;
+    Shader* fxaaShader = nullptr;
 
     void initFrameBufferShader();
 

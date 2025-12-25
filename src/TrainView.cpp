@@ -816,6 +816,10 @@ void TrainView::initFrameBufferShader() {
             new Shader("./shaders/edgeDetection.vert", nullptr, nullptr,
                        nullptr, "./shaders/edgeDetection.frag");
 
+    if (!fxaaShader)
+        fxaaShader = new Shader("./shaders/fxaa.vert", nullptr, nullptr,
+                                nullptr, "./shaders/fxaa.frag");
+
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
         mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
@@ -1092,9 +1096,10 @@ void TrainView::draw() {
     const bool enableGrayscale =
         tw->grayscaleButton && tw->grayscaleButton->value() != 0;
     const bool enableEdge = tw->edgeButton && tw->edgeButton->value() != 0;
+    const bool enableAA = tw->aaButton && tw->aaButton->value() != 0;
     const bool postProcessEnabled =
         enablePixelize || enableToon || enablePaint || enableCrosshatch ||
-        enableStipple || enableGrayscale || enableEdge;
+        enableStipple || enableGrayscale || enableEdge || enableAA;
 
     const bool directionalLightOn =
         tw && tw->directionalLightButton && tw->directionalLightButton->value();
@@ -1230,11 +1235,11 @@ void TrainView::draw() {
     if (postProcessEnabled) {
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
-        int remainingEffects = (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-                               (enablePixelize ? 1 : 0) +
-                               (enableCrosshatch ? 1 : 0) +
-                               (enableStipple ? 1 : 0) +
-                               (enableGrayscale ? 1 : 0) + (enableEdge ? 1 : 0);
+        int remainingEffects =
+            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
+            (enableStipple ? 1 : 0) + (enableGrayscale ? 1 : 0) +
+            (enableEdge ? 1 : 0) + (enableAA ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                                const std::function<void()>& setUniforms,
@@ -1394,6 +1399,34 @@ void TrainView::draw() {
                         glGetUniformLocation(edgeShader->Program, "threshold"),
                         0.15f);
                     glUniform1i(glGetUniformLocation(edgeShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableAA) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                fxaaShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(fxaaShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(fxaaShader->Program, "height"),
+                        (float)h());
+                    glUniform1f(
+                        glGetUniformLocation(fxaaShader->Program, "spanMax"),
+                        8.0f);
+                    glUniform1f(
+                        glGetUniformLocation(fxaaShader->Program, "reduceMin"),
+                        1.0f / 128.0f);
+                    glUniform1f(
+                        glGetUniformLocation(fxaaShader->Program, "reduceMul"),
+                        1.0f / 8.0f);
+                    glUniform1i(glGetUniformLocation(fxaaShader->Program,
                                                      "screenTexture"),
                                 0);
                 },
