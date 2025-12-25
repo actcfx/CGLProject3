@@ -33,7 +33,6 @@
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 
-
 // for using the real time clock
 #include <time.h>
 
@@ -223,6 +222,12 @@ TrainWindow::TrainWindow(const int x, const int y)
         grayscaleButton = new Fl_Button(605, pty, 60, 20, "Gray");
         togglify(grayscaleButton, 0);
 
+        edgeButton = new Fl_Button(670, pty, 60, 20, "Edge");
+        togglify(edgeButton, 0);
+
+        aaButton = new Fl_Button(735, pty, 60, 20, "FXAA");
+        togglify(aaButton, 0);
+
         pty += 30;
 
         // ---------- Physics Button ----------
@@ -232,6 +237,10 @@ TrainWindow::TrainWindow(const int x, const int y)
         // ---------- Minecraft Button ----------
         minecraftButton = new Fl_Button(670, pty, 60, 20, "Minecraft");
         togglify(minecraftButton, 1);
+
+        // ---------- Oden bump mapping toggle ----------
+        bumpButton = new Fl_Button(735, pty, 60, 20, "Bump");
+        togglify(bumpButton, 0);
 
         pty += 30;
 

@@ -242,6 +242,11 @@ private:
     Shader* crosshatchShader = nullptr;
     Shader* stippleShader = nullptr;
     Shader* grayscaleShader = nullptr;
+    Shader* edgeShader = nullptr;
+    Shader* fxaaShader = nullptr;
+
+    Shader* odenBumpShader = nullptr;
+    Texture2D* odenBumpTexture = nullptr;
 
     void initFrameBufferShader();
 

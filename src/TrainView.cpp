@@ -825,6 +825,15 @@ void TrainView::initFrameBufferShader() {
             new Shader("./shaders/grayscale.vert", nullptr, nullptr, nullptr,
                        "./shaders/grayscale.frag");
 
+    if (!edgeShader)
+        edgeShader =
+            new Shader("./shaders/edgeDetection.vert", nullptr, nullptr,
+                       nullptr, "./shaders/edgeDetection.frag");
+
+    if (!fxaaShader)
+        fxaaShader = new Shader("./shaders/fxaa.vert", nullptr, nullptr,
+                                nullptr, "./shaders/fxaa.frag");
+
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
         mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
@@ -1107,9 +1116,11 @@ void TrainView::draw() {
     const bool enableStipple = tw->stippleButton->value() != 0;
     const bool enableGrayscale =
         tw->grayscaleButton && tw->grayscaleButton->value() != 0;
-    const bool postProcessEnabled = enablePixelize || enableToon ||
-                                    enablePaint || enableCrosshatch ||
-                                    enableStipple || enableGrayscale;
+    const bool enableEdge = tw->edgeButton && tw->edgeButton->value() != 0;
+    const bool enableAA = tw->aaButton && tw->aaButton->value() != 0;
+    const bool postProcessEnabled =
+        enablePixelize || enableToon || enablePaint || enableCrosshatch ||
+        enableStipple || enableGrayscale || enableEdge || enableAA;
 
     const bool directionalLightOn =
         tw && tw->directionalLightButton && tw->directionalLightButton->value();
@@ -1259,7 +1270,8 @@ void TrainView::draw() {
         int remainingEffects =
             (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
             (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
-            (enableStipple ? 1 : 0) + (enableGrayscale ? 1 : 0);
+            (enableStipple ? 1 : 0) + (enableGrayscale ? 1 : 0) +
+            (enableEdge ? 1 : 0) + (enableAA ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                                const std::function<void()>& setUniforms,
@@ -1398,6 +1410,83 @@ void TrainView::draw() {
                                 0);
                 },
                 isLast);
+            --remainingEffects;
+        }
+
+        if (enableEdge) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                edgeShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "height"),
+                        (float)h());
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "strength"),
+                        1.0f);
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "threshold"),
+                        0.15f);
+                    glUniform1i(glGetUniformLocation(edgeShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableAA) {
+            bool isLast = remainingEffects == 1;
+            if (!fxaaShader) {
+                --remainingEffects;
+                return;
+            }
+
+            if (isLast) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, w(), h());
+            } else {
+                writeBuffer->bind();
+                glViewport(0, 0, this->pixel_w(), this->pixel_h());
+            }
+
+            glClear(GL_COLOR_BUFFER_BIT);
+            fxaaShader->Use();
+
+            // FXAA depends on fractional-offset sampling, which requires
+            // linear filtering. Our post-process FBO uses GL_NEAREST for
+            // pixelization, so temporarily switch to GL_LINEAR just for this pass.
+            readBuffer->bindTexture(0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "width"),
+                        (float)w());
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "height"),
+                        (float)h());
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "spanMax"),
+                        8.0f);
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMin"),
+                        1.0f / 128.0f);
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMul"),
+                        1.0f / 8.0f);
+            glUniform1i(
+                glGetUniformLocation(fxaaShader->Program, "screenTexture"), 0);
+
+            readBuffer->drawQuad();
+
+            // Restore default filtering so other effects (pixelization) stay crisp.
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            if (!isLast) {
+                FrameBuffer* temp = readBuffer;
+                readBuffer = writeBuffer;
+                writeBuffer = temp;
+            }
             --remainingEffects;
         }
 
@@ -3257,10 +3346,58 @@ void TrainView::drawOden(bool doingShadows) {
     const float porkBallRadius = 10.0f;
     glPushMatrix();
     glTranslatef(0.0f, 0.6f * tofuHeight, 0.7f * tofuWidth);
+
+    const bool bumpEnabled = (!doingShadows) && tw && tw->bumpButton &&
+                             (tw->bumpButton->value() != 0);
+    if (bumpEnabled) {
+        if (!odenBumpShader) {
+            odenBumpShader =
+                new Shader("./shaders/odenBump.vert", nullptr, nullptr, nullptr,
+                           "./shaders/odenBump.frag");
+        }
+        if (!odenBumpTexture) {
+            odenBumpTexture = new Texture2D("./images/bumpMapping.png",
+                                            Texture2D::TEXTURE_HEIGHT);
+        }
+
+        const bool directionalLightOn = tw && tw->directionalLightButton &&
+                                        tw->directionalLightButton->value();
+        const bool pointLightOn =
+            tw && tw->pointLightButton && tw->pointLightButton->value();
+        const bool spotLightOn =
+            tw && tw->spotLightButton && tw->spotLightButton->value();
+
+        odenBumpShader->Use();
+        odenBumpTexture->bind(0);
+        odenBumpShader->setInt("u_bumpTex", 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"), 1);
+        glUniform1f(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
+            2.5f);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
+            directionalLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
+            pointLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
+            spotLightOn ? 1 : 0);
+    }
+
     GLUquadric* quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
+    if (bumpEnabled) {
+        gluQuadricTexture(quad, GL_TRUE);
+    }
     gluSphere(quad, porkBallRadius, 16, 16);
     gluDeleteQuadric(quad);
+
+    if (bumpEnabled) {
+        Texture2D::unbind(0);
+        glUseProgram(0);
+    }
     glPopMatrix();
 
     // ---------- Pig blood cake ----------

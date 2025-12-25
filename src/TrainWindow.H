@@ -110,6 +110,12 @@ public:
 
     Fl_Button* grayscaleButton;
 
+    Fl_Button* edgeButton;
+
+    Fl_Button* aaButton;
+
+    Fl_Button* bumpButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Value_Slider* sphereRecursionSlider;
