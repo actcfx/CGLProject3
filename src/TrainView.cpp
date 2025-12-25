@@ -820,6 +820,20 @@ void TrainView::initFrameBufferShader() {
         stippleShader = new Shader("./shaders/stipple.vert", nullptr, nullptr,
                                    nullptr, "./shaders/stipple.frag");
 
+    if (!grayscaleShader)
+        grayscaleShader =
+            new Shader("./shaders/grayscale.vert", nullptr, nullptr, nullptr,
+                       "./shaders/grayscale.frag");
+
+    if (!edgeShader)
+        edgeShader =
+            new Shader("./shaders/edgeDetection.vert", nullptr, nullptr,
+                       nullptr, "./shaders/edgeDetection.frag");
+
+    if (!fxaaShader)
+        fxaaShader = new Shader("./shaders/fxaa.vert", nullptr, nullptr,
+                                nullptr, "./shaders/fxaa.frag");
+
     // Initialize Buffer if null
     if (!mainFrameBuffer) {
         mainFrameBuffer = new FrameBuffer(this->pixel_w(), this->pixel_h());
@@ -1100,9 +1114,13 @@ void TrainView::draw() {
     const bool enablePaint = tw->paintButton->value() != 0;
     const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
     const bool enableStipple = tw->stippleButton->value() != 0;
-    const bool postProcessEnabled = enablePixelize || enableToon ||
-                                    enablePaint || enableCrosshatch ||
-                                    enableStipple;
+    const bool enableGrayscale =
+        tw->grayscaleButton && tw->grayscaleButton->value() != 0;
+    const bool enableEdge = tw->edgeButton && tw->edgeButton->value() != 0;
+    const bool enableAA = tw->aaButton && tw->aaButton->value() != 0;
+    const bool postProcessEnabled =
+        enablePixelize || enableToon || enablePaint || enableCrosshatch ||
+        enableStipple || enableGrayscale || enableEdge || enableAA;
 
     const bool directionalLightOn =
         tw && tw->directionalLightButton && tw->directionalLightButton->value();
@@ -1238,10 +1256,11 @@ void TrainView::draw() {
     if (postProcessEnabled) {
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
-        int remainingEffects = (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-                               (enablePixelize ? 1 : 0) +
-                               (enableCrosshatch ? 1 : 0) +
-                               (enableStipple ? 1 : 0);
+        int remainingEffects =
+            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
+            (enableStipple ? 1 : 0) + (enableGrayscale ? 1 : 0) +
+            (enableEdge ? 1 : 0) + (enableAA ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
                                const std::function<void()>& setUniforms,
@@ -1367,6 +1386,96 @@ void TrainView::draw() {
                                 0);
                 },
                 isLast);
+            --remainingEffects;
+        }
+
+        if (enableGrayscale) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                grayscaleShader,
+                [&]() {
+                    glUniform1i(glGetUniformLocation(grayscaleShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableEdge) {
+            bool isLast = remainingEffects == 1;
+            applyEffect(
+                edgeShader,
+                [&]() {
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "width"),
+                        (float)w());
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "height"),
+                        (float)h());
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "strength"),
+                        1.0f);
+                    glUniform1f(
+                        glGetUniformLocation(edgeShader->Program, "threshold"),
+                        0.15f);
+                    glUniform1i(glGetUniformLocation(edgeShader->Program,
+                                                     "screenTexture"),
+                                0);
+                },
+                isLast);
+            --remainingEffects;
+        }
+
+        if (enableAA) {
+            bool isLast = remainingEffects == 1;
+            if (!fxaaShader) {
+                --remainingEffects;
+                return;
+            }
+
+            if (isLast) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, w(), h());
+            } else {
+                writeBuffer->bind();
+                glViewport(0, 0, this->pixel_w(), this->pixel_h());
+            }
+
+            glClear(GL_COLOR_BUFFER_BIT);
+            fxaaShader->Use();
+
+            // FXAA depends on fractional-offset sampling, which requires
+            // linear filtering. Our post-process FBO uses GL_NEAREST for
+            // pixelization, so temporarily switch to GL_LINEAR just for this pass.
+            readBuffer->bindTexture(0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "width"),
+                        (float)w());
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "height"),
+                        (float)h());
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "spanMax"),
+                        8.0f);
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMin"),
+                        1.0f / 128.0f);
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMul"),
+                        1.0f / 8.0f);
+            glUniform1i(
+                glGetUniformLocation(fxaaShader->Program, "screenTexture"), 0);
+
+            readBuffer->drawQuad();
+
+            // Restore default filtering so other effects (pixelization) stay crisp.
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            if (!isLast) {
+                FrameBuffer* temp = readBuffer;
+                readBuffer = writeBuffer;
+                writeBuffer = temp;
+            }
             --remainingEffects;
         }
     }
@@ -2278,6 +2387,173 @@ void TrainView::drawTrack(bool doingShadows) {
         glEnd();
     }
 
+    // ---------- Bridge decking on steep slopes ----------
+    const float steepSlopeThreshold = 0.35f;  // cos^-1(0.35) ~ 69 deg
+    const float deckWidth = GUAGE * 1.6f;
+    const float deckThickness = 0.6f;
+    const float deckDrop = railHeight + 0.3f;  // slightly below the rail top
+    const float guardHeight = 2.5f;
+    const float guardThickness = 0.25f;
+
+    auto scaleVec = [](const Pnt3f& v, float s) {
+        return Pnt3f(v.x * s, v.y * s, v.z * s);
+    };
+
+    for (size_t idx = 0; idx < trackCenters.size(); ++idx) {
+        size_t nextIdx = (idx + 1) % trackCenters.size();
+
+        const Pnt3f& tangent = trackTangents[idx];
+        float slope = std::fabs(tangent.y);
+        if (slope < steepSlopeThreshold)
+            continue;
+
+        const Pnt3f& right = rightVectors[idx];
+        const Pnt3f& up = upVectors[idx];
+
+        Pnt3f start = trackCenters[idx];
+        Pnt3f end = trackCenters[nextIdx];
+
+        Pnt3f halfWidth = scaleVec(right, deckWidth * 0.5f);
+        Pnt3f upOffsetTop = scaleVec(up, deckDrop);
+        Pnt3f upOffsetBottom = scaleVec(up, deckDrop + deckThickness);
+
+        // Top rectangle
+        Pnt3f sTopL = start - halfWidth - upOffsetTop;
+        Pnt3f sTopR = start + halfWidth - upOffsetTop;
+        Pnt3f eTopL = end - halfWidth - upOffsetTop;
+        Pnt3f eTopR = end + halfWidth - upOffsetTop;
+
+        // Bottom rectangle
+        Pnt3f sBotL = start - halfWidth - upOffsetBottom;
+        Pnt3f sBotR = start + halfWidth - upOffsetBottom;
+        Pnt3f eBotL = end - halfWidth - upOffsetBottom;
+        Pnt3f eBotR = end + halfWidth - upOffsetBottom;
+
+        Pnt3f segment = end - start;
+        float segLen = std::sqrt(segment.x * segment.x + segment.y * segment.y +
+                                 segment.z * segment.z);
+        Pnt3f segDir = (segLen > 1e-6f)
+                           ? Pnt3f(segment.x / segLen, segment.y / segLen,
+                                   segment.z / segLen)
+                           : tangent;
+
+        if (!doingShadows) {
+            glColor3ub(170, 126, 78);  // wood tone for deck
+        }
+
+        glBegin(GL_QUADS);
+        // Top face
+        glNormal3f(up.x, up.y, up.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+
+        // Bottom face
+        glNormal3f(-up.x, -up.y, -up.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+
+        // Left face
+        glNormal3f(-right.x, -right.y, -right.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+
+        // Right face
+        glNormal3f(right.x, right.y, right.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+
+        // Front face
+        glNormal3f(segDir.x, segDir.y, segDir.z);
+        glVertex3f(sBotR.x, sBotR.y, sBotR.z);
+        glVertex3f(sBotL.x, sBotL.y, sBotL.z);
+        glVertex3f(sTopL.x, sTopL.y, sTopL.z);
+        glVertex3f(sTopR.x, sTopR.y, sTopR.z);
+
+        // Back face
+        glNormal3f(-segDir.x, -segDir.y, -segDir.z);
+        glVertex3f(eBotL.x, eBotL.y, eBotL.z);
+        glVertex3f(eBotR.x, eBotR.y, eBotR.z);
+        glVertex3f(eTopR.x, eTopR.y, eTopR.z);
+        glVertex3f(eTopL.x, eTopL.y, eTopL.z);
+        glEnd();
+
+        // Guardrails on both sides of the deck
+        if (!doingShadows) {
+            glColor3ub(200, 200, 200);
+        }
+
+        Pnt3f upGuard = scaleVec(up, guardHeight);
+        Pnt3f railOffset = scaleVec(right, guardThickness);
+
+        auto drawGuard = [&](bool leftSide) {
+            float sign = leftSide ? -1.0f : 1.0f;
+            Pnt3f sideOffset = scaleVec(right, sign * (deckWidth * 0.5f));
+            Pnt3f baseStart = start + sideOffset - upOffsetTop;
+            Pnt3f baseEnd = end + sideOffset - upOffsetTop;
+            Pnt3f outward = scaleVec(right, sign * guardThickness);
+
+            Pnt3f innerStart = baseStart;
+            Pnt3f innerEnd = baseEnd;
+            Pnt3f outerStart = baseStart + outward;
+            Pnt3f outerEnd = baseEnd + outward;
+
+            Pnt3f innerStartTop = innerStart + upGuard;
+            Pnt3f innerEndTop = innerEnd + upGuard;
+            Pnt3f outerStartTop = outerStart + upGuard;
+            Pnt3f outerEndTop = outerEnd + upGuard;
+
+            Pnt3f normalSide = scaleVec(right, sign);
+
+            glBegin(GL_QUADS);
+            // Outside face
+            glNormal3f(normalSide.x, normalSide.y, normalSide.z);
+            glVertex3f(outerStart.x, outerStart.y, outerStart.z);
+            glVertex3f(outerEnd.x, outerEnd.y, outerEnd.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+
+            // Inside face
+            glNormal3f(-normalSide.x, -normalSide.y, -normalSide.z);
+            glVertex3f(innerEnd.x, innerEnd.y, innerEnd.z);
+            glVertex3f(innerStart.x, innerStart.y, innerStart.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+
+            // Top face
+            glNormal3f(up.x, up.y, up.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+
+            // Front face
+            glNormal3f(segDir.x, segDir.y, segDir.z);
+            glVertex3f(innerStart.x, innerStart.y, innerStart.z);
+            glVertex3f(outerStart.x, outerStart.y, outerStart.z);
+            glVertex3f(outerStartTop.x, outerStartTop.y, outerStartTop.z);
+            glVertex3f(innerStartTop.x, innerStartTop.y, innerStartTop.z);
+
+            // Back face
+            glNormal3f(-segDir.x, -segDir.y, -segDir.z);
+            glVertex3f(outerEnd.x, outerEnd.y, outerEnd.z);
+            glVertex3f(innerEnd.x, innerEnd.y, innerEnd.z);
+            glVertex3f(innerEndTop.x, innerEndTop.y, innerEndTop.z);
+            glVertex3f(outerEndTop.x, outerEndTop.y, outerEndTop.z);
+            glEnd();
+        };
+
+        drawGuard(true);
+        drawGuard(false);
+    }
+
     // ---------- Draw Trestles (Support Pillars) ----------
     // Check each track point and draw pillars if track is above terrain
     const float minGapForTrestle = 5.0f;  // Minimum gap to trigger pillar
@@ -3055,10 +3331,58 @@ void TrainView::drawOden(bool doingShadows) {
     const float porkBallRadius = 10.0f;
     glPushMatrix();
     glTranslatef(0.0f, 0.6f * tofuHeight, 0.7f * tofuWidth);
+
+    const bool bumpEnabled = (!doingShadows) && tw && tw->bumpButton &&
+                             (tw->bumpButton->value() != 0);
+    if (bumpEnabled) {
+        if (!odenBumpShader) {
+            odenBumpShader =
+                new Shader("./shaders/odenBump.vert", nullptr, nullptr, nullptr,
+                           "./shaders/odenBump.frag");
+        }
+        if (!odenBumpTexture) {
+            odenBumpTexture = new Texture2D("./images/bumpMapping.png",
+                                            Texture2D::TEXTURE_HEIGHT);
+        }
+
+        const bool directionalLightOn = tw && tw->directionalLightButton &&
+                                        tw->directionalLightButton->value();
+        const bool pointLightOn =
+            tw && tw->pointLightButton && tw->pointLightButton->value();
+        const bool spotLightOn =
+            tw && tw->spotLightButton && tw->spotLightButton->value();
+
+        odenBumpShader->Use();
+        odenBumpTexture->bind(0);
+        odenBumpShader->setInt("u_bumpTex", 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"), 1);
+        glUniform1f(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
+            2.5f);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
+            directionalLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
+            pointLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
+            spotLightOn ? 1 : 0);
+    }
+
     GLUquadric* quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
+    if (bumpEnabled) {
+        gluQuadricTexture(quad, GL_TRUE);
+    }
     gluSphere(quad, porkBallRadius, 16, 16);
     gluDeleteQuadric(quad);
+
+    if (bumpEnabled) {
+        Texture2D::unbind(0);
+        glUseProgram(0);
+    }
     glPopMatrix();
 
     // ---------- Pig blood cake ----------
