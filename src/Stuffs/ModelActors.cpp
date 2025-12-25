@@ -187,30 +187,28 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
 }
 
 McChest::McChest(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftChest/model/Obj/chest.obj",
+    : ModelActor(owner, "./models/minecraftChest/model/Obj/chest.obj",
                  5.0f) {}
 
 McMinecart::McMinecart(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftMinecart/scene.gltf", 10.0f) {
+    : ModelActor(owner, "./models/minecraftMinecart/scene.gltf", 10.0f) {
 }
 
 McFox::McFox(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftFox/Fox.fbx", 0.03f) {}
-
+    : ModelActor(owner, "./models/minecraftFox/Fox.fbx", 0.03f) {}
 McVillager::McVillager(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftVillager/scene.gltf", 1.0f) {}
+    : ModelActor(owner, "./models/minecraftVillager/scene.gltf", 1.0f) {}
 
 Tunnel::Tunnel(TrainView* owner)
-    : ModelActor(owner, "./assets/models/tunnel/scene.gltf", 0.2f) {}
+    : ModelActor(owner, "./models/tunnel/scene.gltf", 0.2f) {}
 
 Ghast::Ghast(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftGhast/ghast.obj", 20.0f) {}
+    : ModelActor(owner, "./models/minecraftGhast/ghast.obj", 20.0f) {}
 
 TNT::TNT(TrainView* owner)
-    : ModelActor(owner, "./assets/models/minecraftTNTBall/scene.gltf", 15.0f) {}
-
+    : ModelActor(owner, "./models/minecraftTNTBall/scene.gltf", 15.0f) {}
 Jet::Jet(TrainView* owner)
-    : ModelActor(owner, "./assets/models/fighterJet/scene.gltf", 0.3f) {}
+    : ModelActor(owner, "./models/fighterJet/scene.gltf", 0.3f) {}
 
 Soldier::Soldier(TrainView* owner)
-    : ModelActor(owner, "./assets/models/soldier/scene.gltf", 0.1f) {}
+    : ModelActor(owner, "./models/soldier/scene.gltf", 0.1f) {}
