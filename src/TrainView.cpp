@@ -1086,7 +1086,6 @@ void TrainView::draw() {
     const bool enableStipple = tw->stippleButton->value() != 0;
     const bool enableGrayscale =
         tw->grayscaleButton && tw->grayscaleButton->value() != 0;
-    const bool smokeOn = tw && tw->smokeButton && tw->smokeButton->value();
     const bool postProcessEnabled = enablePixelize || enableToon ||
                                     enablePaint || enableCrosshatch ||
                                     enableStipple || enableGrayscale;
@@ -1098,21 +1097,15 @@ void TrainView::draw() {
     const bool spotLightOn =
         tw && tw->spotLightButton && tw->spotLightButton->value();
 
-    // Keep lights active, but skip shadow rendering while smoke is enabled to
-    // avoid harsh banding through fog.
-    const bool directionalShadowOn = directionalLightOn && !smokeOn;
-    const bool pointShadowOn = pointLightOn && !smokeOn;
-    const bool spotShadowOn = spotLightOn && !smokeOn;
-
-    if (directionalShadowOn) {
+    if (directionalLightOn) {
         renderShadowMap();
     }
 
-    if (pointShadowOn) {
+    if (pointLightOn) {
         renderPointShadowMap();
     }
 
-    if (spotShadowOn) {
+    if (spotLightOn) {
         renderSpotShadowMap();
     }
 
@@ -1164,9 +1157,8 @@ void TrainView::draw() {
 
     drawStuff();
 
-    // this time drawing is for shadows (except for top view). Skip when smoke
-    // effect is active to avoid banding through fog.
-    if (!smokeOn && !tw->topCam->value()) {
+    // this time drawing is for shadows (except for top view)
+    if (!tw->topCam->value()) {
         setupShadows();
         drawStuff(true);
         unsetupShadows();
@@ -1203,15 +1195,15 @@ void TrainView::draw() {
 
     // ---------- Draw the terrain ----------
     glm::vec3 cameraPos = totemCameraPos;
-    bool enableShadow = directionalShadowOn;
+    bool enableShadow = directionalLightOn;
     bool enableLight = directionalLightOn;
     glm::vec3 pointLightPos = getPointLightPos();
     bool enablePointLight = pointLightOn;
-    bool enablePointShadow = pointShadowOn;
+    bool enablePointShadow = pointLightOn;
     glm::vec3 spotLightPos = getSpotLightPos();
     glm::vec3 spotLightDir = getSpotLightDir();
     bool enableSpotLight = spotLightOn;
-    bool enableSpotShadow = spotShadowOn;
+    bool enableSpotShadow = spotLightOn;
     float spotInnerCos = glm::cos(glm::radians(22.0f));
     float spotOuterCos = glm::cos(glm::radians(32.0f));
     glm::vec4 noClipPlane(0.0f);
