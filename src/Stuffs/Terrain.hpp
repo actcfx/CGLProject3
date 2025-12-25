@@ -25,7 +25,7 @@ private:
     std::vector<float> heightMap;
 
     VAO* plane = nullptr;
-    // Shader* shader = nullptr; // 不再需要 Shader
+    Shader* shader = nullptr;
 
     TrainWindow* tw = nullptr;
 
@@ -35,6 +35,13 @@ public:
     int getDepth() const { return depth; }
 
     float getScaleXZ() const { return scaleXZ; }
+
+    glm::mat4 getModelMatrix() const {
+        glm::mat4 model(1.0f);
+        model = glm::translate(model, glm::vec3(-width / 2.0f * scaleXZ, -10.0f,
+                                                -depth / 2.0f * scaleXZ));
+        return model;
+    }
 
     // Public method to get terrain height at world coordinates (x, z)
     float getHeightAtWorldPos(float worldX, float worldZ) const {
@@ -178,6 +185,10 @@ public:
             glDeleteBuffers(1, &plane->ebo);
             delete plane;
             plane = nullptr;
+        }
+        if (shader) {
+            delete shader;
+            shader = nullptr;
         }
     }
 
@@ -372,50 +383,143 @@ public:
         }
     }
 
-    // Draw using Fixed Function Pipeline
-    void draw() {
+    void draw(const glm::mat4& view, const glm::mat4& proj,
+              const glm::mat4& lightSpace, GLuint shadowMap,
+              const glm::vec3& lightDir, const glm::vec3& viewPos,
+              bool enableShadow, bool enableLight,
+              // Point light inputs
+              const glm::vec3& pointLightPos, GLuint pointShadowMap,
+              float pointFarPlane, bool enablePointShadow,
+              bool enablePointLight,
+              // Spot light inputs
+              const glm::vec3& spotLightPos, const glm::vec3& spotLightDir,
+              const glm::mat4& spotLightMatrix, GLuint spotShadowMap,
+              float spotFarPlane, float spotInnerCos, float spotOuterCos,
+              bool enableSpotShadow, bool enableSpotLight,
+              // Clip plane
+              const glm::vec4& clipPlane, bool enableClip) {
         if (!plane)
             return;
 
-        // Apply Model Matrix using OpenGL stack
+        if (!shader) {
+            shader = new Shader("./shaders/terrain.vert", nullptr, nullptr,
+                                nullptr, "./shaders/terrain.frag");
+        }
+
+        shader->Use();
+
+        glm::mat4 model = getModelMatrix();
+        glUniformMatrix4fv(glGetUniformLocation(shader->Program, "u_model"), 1,
+                           GL_FALSE, glm::value_ptr(model));
+        glUniformMatrix4fv(glGetUniformLocation(shader->Program, "u_view"), 1,
+                           GL_FALSE, glm::value_ptr(view));
+        glUniformMatrix4fv(glGetUniformLocation(shader->Program, "u_proj"), 1,
+                           GL_FALSE, glm::value_ptr(proj));
+        glUniformMatrix4fv(
+            glGetUniformLocation(shader->Program, "u_lightSpace"), 1, GL_FALSE,
+            glm::value_ptr(lightSpace));
+        glUniform4fv(glGetUniformLocation(shader->Program, "u_clipPlane"), 1,
+                     glm::value_ptr(clipPlane));
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableClip"),
+                    enableClip ? 1 : 0);
+
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_lightDir"), 1,
+                     glm::value_ptr(lightDir));
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_viewPos"), 1,
+                     glm::value_ptr(viewPos));
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableShadow"),
+                    enableShadow ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableLight"),
+                    enableLight ? 1 : 0);
+
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_pointLightPos"),
+                     1, glm::value_ptr(pointLightPos));
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enablePointLight"),
+                    enablePointLight ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(shader->Program, "u_enablePointShadow"),
+            enablePointShadow ? 1 : 0);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_pointFarPlane"),
+                    pointFarPlane);
+
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_spotLightPos"), 1,
+                     glm::value_ptr(spotLightPos));
+        glUniform3fv(glGetUniformLocation(shader->Program, "u_spotLightDir"), 1,
+                     glm::value_ptr(spotLightDir));
+        glUniformMatrix4fv(
+            glGetUniformLocation(shader->Program, "u_spotLightMatrix"), 1,
+            GL_FALSE, glm::value_ptr(spotLightMatrix));
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotFarPlane"),
+                    spotFarPlane);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotInnerCos"),
+                    spotInnerCos);
+        glUniform1f(glGetUniformLocation(shader->Program, "u_spotOuterCos"),
+                    spotOuterCos);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableSpotShadow"),
+                    enableSpotShadow ? 1 : 0);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_enableSpotLight"),
+                    enableSpotLight ? 1 : 0);
+
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, shadowMap);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_shadowMap"), 0);
+
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, pointShadowMap);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_pointShadowMap"),
+                    1);
+
+        glActiveTexture(GL_TEXTURE2);
+        glBindTexture(GL_TEXTURE_2D, spotShadowMap);
+        glUniform1i(glGetUniformLocation(shader->Program, "u_spotShadowMap"),
+                    2);
+
+        glBindVertexArray(plane->vao);
+        glDrawElements(GL_TRIANGLES, plane->element_amount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+
+        glUseProgram(0);
+    }
+
+    void drawPointShadow(Shader* depthShader, const glm::mat4& lightMatrix,
+                         const glm::vec3& lightPos, float farPlane) {
+        if (!plane || !depthShader)
+            return;
+
+        depthShader->Use();
+        glm::mat4 model = getModelMatrix();
+        glUniformMatrix4fv(
+            glGetUniformLocation(depthShader->Program, "u_model"), 1, GL_FALSE,
+            glm::value_ptr(model));
+        glUniformMatrix4fv(
+            glGetUniformLocation(depthShader->Program, "u_lightMatrix"), 1,
+            GL_FALSE, glm::value_ptr(lightMatrix));
+        glUniform3fv(glGetUniformLocation(depthShader->Program, "u_lightPos"),
+                     1, glm::value_ptr(lightPos));
+        glUniform1f(glGetUniformLocation(depthShader->Program, "u_farPlane"),
+                    farPlane);
+
+        glBindVertexArray(plane->vao);
+        glDrawElements(GL_TRIANGLES, plane->element_amount, GL_UNSIGNED_INT, 0);
+        glBindVertexArray(0);
+    }
+
+    void drawDepth() {
+        if (!plane)
+            return;
+
         glMatrixMode(GL_MODELVIEW);
         glPushMatrix();
-
-        // Translate to center (-width/2 * scaleXZ, -10, -depth/2 * scaleXZ)
         glTranslatef(-width / 2.0f * scaleXZ, -10.0f, -depth / 2.0f * scaleXZ);
 
-        // Enable Lighting & Color Material
-        glEnable(GL_LIGHTING);
-        glEnable(GL_COLOR_MATERIAL);
-        glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
-
-        // Bind Buffers for Fixed Function
-
-        // 1. Vertices
         glBindBuffer(GL_ARRAY_BUFFER, plane->vbo[0]);
         glEnableClientState(GL_VERTEX_ARRAY);
         glVertexPointer(3, GL_FLOAT, 0, 0);
 
-        // 2. Normals
-        glBindBuffer(GL_ARRAY_BUFFER, plane->vbo[1]);
-        glEnableClientState(GL_NORMAL_ARRAY);
-        glNormalPointer(GL_FLOAT, 0, 0);
-
-        // 3. Colors
-        glBindBuffer(GL_ARRAY_BUFFER, plane->vbo[2]);
-        glEnableClientState(GL_COLOR_ARRAY);
-        glColorPointer(3, GL_FLOAT, 0, 0);
-
-        // Indices
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, plane->ebo);
-
-        // Draw
         glDrawElements(GL_TRIANGLES, plane->element_amount, GL_UNSIGNED_INT, 0);
 
-        // Restore State
         glDisableClientState(GL_VERTEX_ARRAY);
-        glDisableClientState(GL_NORMAL_ARRAY);
-        glDisableClientState(GL_COLOR_ARRAY);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
 

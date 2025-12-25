@@ -23,29 +23,32 @@ references)
 *************************************************************************/
 
 #include <algorithm>
+#include <array>
 #include <chrono>
 #include <cmath>
 #include <functional>
 #include <iostream>
+#include <limits>
 #include <random>
 #include <string>
 #include <vector>
-#include <limits>
 
 #include <glad/glad.h>
-#include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
 #include <mmsystem.h>
+#include <windows.h>  // we will need OpenGL, and OpenGL needs windows.h
+
 #pragma comment(lib, "winmm.lib")
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include "ControlPoint.H"
 #include "GL/glu.h"
+#include "RenderUtilities/Shader.h"
+#include "Stuffs/SubdivisionSphere.hpp"
+#include "Stuffs/totemOfUndying.hpp"
 #include "TrainView.H"
 #include "TrainWindow.H"
 #include "Utilities/3DUtils.H"
-#include "Stuffs/totemOfUndying.hpp"
-#include "Stuffs/SubdivisionSphere.hpp"
 
 #ifdef EXAMPLE_SOLUTION
 #include "TrainExample/TrainExample.H"
@@ -83,7 +86,7 @@ static void collectMp3InDir(const std::wstring& dir, std::vector<std::wstring>& 
 static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
     const std::wstring relDir = L"assets\\bgm";
 
-    wchar_t exePath[MAX_PATH] = {0};
+    wchar_t exePath[MAX_PATH] = { 0 };
     DWORD len = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
     std::wstring base;
     if (len > 0 && len < MAX_PATH) {
@@ -124,7 +127,8 @@ static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
 }
 
 static void startBgmOnce() {
-    if (g_bgmStarted) return;
+    if (g_bgmStarted)
+        return;
 
     std::wstring tried;
     std::wstring path = resolveRandomBgmPath(tried);
@@ -137,41 +141,48 @@ static void startBgmOnce() {
     bool isMp3 = false;
     if (path.size() >= 4) {
         std::wstring ext = path.substr(path.size() - 4);
-        for (auto& c : ext) c = static_cast<wchar_t>(towlower(c));
+        for (auto& c : ext)
+            c = static_cast<wchar_t>(towlower(c));
         isMp3 = (ext == L".mp3");
     }
 
     if (isMp3) {
         mciSendStringW(L"close bgm", NULL, 0, NULL);
-        std::wstring openCmd = L"open \"" + path + L"\" type mpegvideo alias bgm";
+        std::wstring openCmd =
+            L"open \"" + path + L"\" type mpegvideo alias bgm";
         MCIERROR openErr = mciSendStringW(openCmd.c_str(), NULL, 0, NULL);
         if (openErr != 0) {
-            std::cerr << "MCI open failed for mp3: " << std::string(path.begin(), path.end())
+            std::cerr << "MCI open failed for mp3: "
+                      << std::string(path.begin(), path.end())
                       << " error code: " << openErr << std::endl;
             return;
         }
         MCIERROR playErr = mciSendStringW(L"play bgm repeat", NULL, 0, NULL);
         if (playErr != 0) {
-            std::cerr << "MCI play failed for mp3: " << std::string(path.begin(), path.end())
+            std::cerr << "MCI play failed for mp3: "
+                      << std::string(path.begin(), path.end())
                       << " error code: " << playErr << std::endl;
             mciSendStringW(L"close bgm", NULL, 0, NULL);
             return;
         }
         g_bgmStarted = true;
     } else {
-        BOOL ok = PlaySoundW(path.c_str(), NULL,
-                             SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
+        BOOL ok =
+            PlaySoundW(path.c_str(), NULL,
+                       SND_FILENAME | SND_ASYNC | SND_LOOP | SND_NODEFAULT);
         if (ok) {
             g_bgmStarted = true;
         } else {
-            std::cerr << "PlaySound failed (ensure 16-bit PCM WAV 44.1kHz; mp3 uses MCI path): "
+            std::cerr << "PlaySound failed (ensure 16-bit PCM WAV 44.1kHz; mp3 "
+                         "uses MCI path): "
                       << std::string(path.begin(), path.end()) << std::endl;
         }
     }
 }
 
 static void stopBgm() {
-    if (!g_bgmStarted) return;
+    if (!g_bgmStarted)
+        return;
     PlaySoundW(NULL, NULL, 0);
     mciSendStringW(L"close bgm", NULL, 0, NULL);
     g_bgmStarted = false;
@@ -209,7 +220,8 @@ TrainView::TrainView(int x, int y, int w, int h, const char* l)
     ghastMaxBounds = ghastPosition + ghastRange;
     ghastDirection = sampleGhastDirection();
     glm::vec3 initialDir = ghastDirection;
-    float horizLen = std::sqrt(initialDir.x * initialDir.x + initialDir.z * initialDir.z);
+    float horizLen =
+        std::sqrt(initialDir.x * initialDir.x + initialDir.z * initialDir.z);
     if (horizLen > 1e-3f)
         ghastYaw = std::atan2(initialDir.x, initialDir.z);
     ghastTimeLeft = ghastModeDuration;
@@ -365,22 +377,10 @@ void TrainView::setLighting() {
 
     // ---------- Point Light ----------
     auto setPointLight = [this]() -> void {
-        float pointAmbient[] = { 0.05f, 0.05f, 0.02f, 1.0f };
-        float pointDiffuse[] = { 1.0f, 1.0f, 0.2f, 1.0f };
+        float pointAmbient[] = { 0.10f, 0.10f, 0.04f, 1.0f };
+        float pointDiffuse[] = { 2.0f, 2.0f, 0.4f, 1.0f };
 
-        Pnt3f pointPosition(10.0f, 10.0f, 10.0f);
-        Pnt3f pointOrientation(0.0f, -1.0f, 0.0f);
-
-        if (!m_pTrack->points.empty()) {
-            int selectIndex = (selectedCube >= 0 &&
-                               selectedCube < (int)m_pTrack->points.size())
-                                  ? selectedCube
-                                  : 0;
-            pointPosition = m_pTrack->points[(size_t)selectIndex].pos;
-            pointOrientation = m_pTrack->points[(size_t)selectIndex].orient;
-            pointOrientation.normalize();
-        }
-
+        glm::vec3 pointPosition = computePointLightPos();
         float pointLightPosition[] = { pointPosition.x, pointPosition.y,
                                        pointPosition.z, 1.0f };
 
@@ -443,9 +443,344 @@ void TrainView::setLighting() {
         glFogi(GL_FOG_MODE, GL_LINEAR);
         glFogf(GL_FOG_START, smokeStartDistance);
         glFogf(GL_FOG_END, smokeEndDistance);
-    }else {
+    } else {
         glDisable(GL_FOG);
     }
+}
+
+glm::vec3 TrainView::computePointLightPos() const {
+    glm::vec3 pointPosition(10.0f, 10.0f, 10.0f);
+    if (m_pTrack && !m_pTrack->points.empty()) {
+        int selectIndex =
+            (selectedCube >= 0 && selectedCube < (int)m_pTrack->points.size())
+                ? selectedCube
+                : 0;
+        const auto& cp = m_pTrack->points[(size_t)selectIndex];
+        pointPosition = glm::vec3(cp.pos.x, cp.pos.y, cp.pos.z);
+    }
+    return pointPosition;
+}
+
+glm::vec3 TrainView::getPointLightPos() const {
+    return computePointLightPos();
+}
+
+glm::vec3 TrainView::computeSpotLightPos() const {
+    glm::vec3 base(trainPosition.x, trainPosition.y, trainPosition.z);
+    glm::vec3 dir = computeSpotLightDir();
+    return base + dir * 20.0f + glm::vec3(0.0f, 5.0f, 0.0f);
+}
+
+glm::vec3 TrainView::computeSpotLightDir() const {
+    glm::vec3 dir(trainForward.x, trainForward.y, trainForward.z);
+    if (glm::length(dir) < 1e-4f)
+        dir = glm::vec3(0.0f, -0.5f, -1.0f);
+    return glm::normalize(dir);
+}
+
+glm::vec3 TrainView::getSpotLightPos() const {
+    return computeSpotLightPos();
+}
+
+glm::vec3 TrainView::getSpotLightDir() const {
+    return computeSpotLightDir();
+}
+
+void TrainView::initShadowMap() {
+    if (shadowFBO != 0 && shadowDepthMap != 0)
+        return;
+
+    glGenFramebuffers(1, &shadowFBO);
+    glGenTextures(1, &shadowDepthMap);
+
+    glBindTexture(GL_TEXTURE_2D, shadowDepthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, shadowMapResolution,
+                 shadowMapResolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           shadowDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+}
+
+void TrainView::updateLightMatrices() {
+    dirLightDir = glm::normalize(dirLightDir);
+    glm::vec3 lightDir = dirLightDir;
+
+    float halfExtent = 150.0f;
+    if (terrain) {
+        float terrainWidth = terrain->getWidth() * terrain->getScaleXZ();
+        float terrainDepth = terrain->getDepth() * terrain->getScaleXZ();
+        halfExtent = std::max(terrainWidth, terrainDepth) * 0.6f;
+    }
+
+    const float nearPlane = 10.0f;
+    const float farPlane = 800.0f;
+
+    glm::vec3 center(0.0f, 0.0f, 0.0f);
+    glm::vec3 lightPos =
+        center - lightDir * 250.0f + glm::vec3(0.0f, 150.0f, 0.0f);
+
+    lightView = glm::lookAt(lightPos, center, glm::vec3(0.0f, 1.0f, 0.0f));
+    lightProj = glm::ortho(-halfExtent, halfExtent, -halfExtent, halfExtent,
+                           nearPlane, farPlane);
+    lightSpaceMatrix = lightProj * lightView;
+}
+
+void TrainView::renderShadowMap() {
+    if (!terrain || !tw || !tw->directionalLightButton ||
+        tw->directionalLightButton->value() == 0)
+        return;
+
+    initShadowMap();
+    updateLightMatrices();
+
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFBO);
+
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, shadowFBO);
+    glViewport(0, 0, shadowMapResolution, shadowMapResolution);
+    glClear(GL_DEPTH_BUFFER_BIT);
+
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(4.0f, 4.0f);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadMatrixf(glm::value_ptr(lightProj));
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadMatrixf(glm::value_ptr(lightView));
+
+    drawStuff(true);
+    terrain->drawDepth();
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+
+void TrainView::initPointShadowMap() {
+    if (pointShadowFBO != 0 && pointShadowDepthMap != 0 && pointShadowShader)
+        return;
+
+    if (!pointShadowShader) {
+        pointShadowShader =
+            new Shader("./shaders/pointShadowDepth.vert", nullptr, nullptr,
+                       nullptr, "./shaders/pointShadowDepth.frag");
+    }
+
+    if (pointShadowFBO == 0)
+        glGenFramebuffers(1, &pointShadowFBO);
+    if (pointShadowDepthMap == 0)
+        glGenTextures(1, &pointShadowDepthMap);
+
+    glBindTexture(GL_TEXTURE_CUBE_MAP, pointShadowDepthMap);
+    for (int i = 0; i < 6; ++i) {
+        glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0,
+                     GL_DEPTH_COMPONENT24, pointShadowMapResolution,
+                     pointShadowMapResolution, 0, GL_DEPTH_COMPONENT, GL_FLOAT,
+                     nullptr);
+    }
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+    glFramebufferTexture(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                         pointShadowDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void TrainView::renderPointShadowMap() {
+    if (!terrain || !tw || !tw->pointLightButton ||
+        tw->pointLightButton->value() == 0)
+        return;
+
+    initPointShadowMap();
+
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFBO);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    glm::vec3 lightPos = computePointLightPos();
+    glm::mat4 shadowProj = glm::perspective(
+        glm::radians(90.0f), 1.0f, pointShadowNearPlane, pointShadowFarPlane);
+
+    std::array<glm::mat4, 6> shadowTransforms = {
+        glm::lookAt(lightPos, lightPos + glm::vec3(1.0f, 0.0f, 0.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(-1.0f, 0.0f, 0.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 1.0f, 0.0f),
+                    glm::vec3(0.0f, 0.0f, 1.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, -1.0f, 0.0f),
+                    glm::vec3(0.0f, 0.0f, -1.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, 1.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f)),
+        glm::lookAt(lightPos, lightPos + glm::vec3(0.0f, 0.0f, -1.0f),
+                    glm::vec3(0.0f, -1.0f, 0.0f))
+    };
+
+    glBindFramebuffer(GL_FRAMEBUFFER, pointShadowFBO);
+    glViewport(0, 0, pointShadowMapResolution, pointShadowMapResolution);
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    pointShadowShader->Use();
+    glUniform3fv(glGetUniformLocation(pointShadowShader->Program, "u_lightPos"),
+                 1, glm::value_ptr(lightPos));
+    glUniform1f(glGetUniformLocation(pointShadowShader->Program, "u_farPlane"),
+                pointShadowFarPlane);
+
+    for (size_t i = 0; i < shadowTransforms.size(); ++i) {
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT,
+                               GL_TEXTURE_CUBE_MAP_POSITIVE_X + (GLenum)i,
+                               pointShadowDepthMap, 0);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glm::mat4 lightMat = shadowProj * shadowTransforms[i];
+        glUniformMatrix4fv(
+            glGetUniformLocation(pointShadowShader->Program, "u_lightMatrix"),
+            1, GL_FALSE, glm::value_ptr(lightMat));
+
+        terrain->drawPointShadow(pointShadowShader, lightMat, lightPos,
+                                 pointShadowFarPlane);
+    }
+
+    glUseProgram(0);
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+}
+
+void TrainView::initSpotShadowMap() {
+    if (spotShadowFBO != 0 && spotShadowDepthMap != 0 && spotShadowShader)
+        return;
+
+    if (!spotShadowShader) {
+        spotShadowShader =
+            new Shader("./shaders/pointShadowDepth.vert", nullptr, nullptr,
+                       nullptr, "./shaders/pointShadowDepth.frag");
+    }
+
+    if (spotShadowFBO == 0)
+        glGenFramebuffers(1, &spotShadowFBO);
+    if (spotShadowDepthMap == 0)
+        glGenTextures(1, &spotShadowDepthMap);
+
+    glBindTexture(GL_TEXTURE_2D, spotShadowDepthMap);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24,
+                 spotShadowMapResolution, spotShadowMapResolution, 0,
+                 GL_DEPTH_COMPONENT, GL_FLOAT, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFBO);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D,
+                           spotShadowDepthMap, 0);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void TrainView::renderSpotShadowMap() {
+    if (!terrain || !tw || !tw->spotLightButton ||
+        tw->spotLightButton->value() == 0)
+        return;
+
+    initSpotShadowMap();
+
+    GLint prevFBO = 0;
+    glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &prevFBO);
+    GLint viewport[4];
+    glGetIntegerv(GL_VIEWPORT, viewport);
+
+    glm::vec3 lightPos = computeSpotLightPos();
+    glm::vec3 lightDir = computeSpotLightDir();
+    glm::vec3 up(0.0f, 1.0f, 0.0f);
+    if (std::abs(glm::dot(up, lightDir)) > 0.95f)
+        up = glm::vec3(0.0f, 0.0f, 1.0f);
+
+    glm::mat4 lightView = glm::lookAt(lightPos, lightPos + lightDir, up);
+    glm::mat4 lightProj = glm::perspective(
+        glm::radians(35.0f), 1.0f, spotShadowNearPlane, spotShadowFarPlane);
+    spotLightMatrix = lightProj * lightView;
+
+    glBindFramebuffer(GL_FRAMEBUFFER, spotShadowFBO);
+    glViewport(0, 0, spotShadowMapResolution, spotShadowMapResolution);
+    glClear(GL_DEPTH_BUFFER_BIT);
+    glColorMask(GL_FALSE, GL_FALSE, GL_FALSE, GL_FALSE);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(4.0f, 4.0f);
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_FRONT);
+
+    spotShadowShader->Use();
+    glUniform3fv(glGetUniformLocation(spotShadowShader->Program, "u_lightPos"),
+                 1, glm::value_ptr(lightPos));
+    glUniform1f(glGetUniformLocation(spotShadowShader->Program, "u_farPlane"),
+                spotShadowFarPlane);
+    glUniformMatrix4fv(
+        glGetUniformLocation(spotShadowShader->Program, "u_lightMatrix"), 1,
+        GL_FALSE, glm::value_ptr(spotLightMatrix));
+
+    terrain->drawPointShadow(spotShadowShader, spotLightMatrix, lightPos,
+                             spotShadowFarPlane);
+
+    glUseProgram(0);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glCullFace(GL_BACK);
+    glDisable(GL_CULL_FACE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, prevFBO);
+    glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
 }
 
 void TrainView::setUBO() {
@@ -478,9 +813,9 @@ void TrainView::initFrameBufferShader() {
         paintShader = new Shader("./shaders/paint.vert", nullptr, nullptr,
                                  nullptr, "./shaders/paint.frag");
     if (!crosshatchShader)
-        crosshatchShader = new Shader("./shaders/crosshatch.vert", nullptr,
-                                      nullptr, nullptr,
-                                      "./shaders/crosshatch.frag");
+        crosshatchShader =
+            new Shader("./shaders/crosshatch.vert", nullptr, nullptr, nullptr,
+                       "./shaders/crosshatch.frag");
     if (!stippleShader)
         stippleShader = new Shader("./shaders/stipple.vert", nullptr, nullptr,
                                    nullptr, "./shaders/stipple.frag");
@@ -765,9 +1100,28 @@ void TrainView::draw() {
     const bool enablePaint = tw->paintButton->value() != 0;
     const bool enableCrosshatch = tw->crosshatchButton->value() != 0;
     const bool enableStipple = tw->stippleButton->value() != 0;
-    const bool postProcessEnabled =
-        enablePixelize || enableToon || enablePaint || enableCrosshatch ||
-        enableStipple;
+    const bool postProcessEnabled = enablePixelize || enableToon ||
+                                    enablePaint || enableCrosshatch ||
+                                    enableStipple;
+
+    const bool directionalLightOn =
+        tw && tw->directionalLightButton && tw->directionalLightButton->value();
+    const bool pointLightOn =
+        tw && tw->pointLightButton && tw->pointLightButton->value();
+    const bool spotLightOn =
+        tw && tw->spotLightButton && tw->spotLightButton->value();
+
+    if (directionalLightOn) {
+        renderShadowMap();
+    }
+
+    if (pointLightOn) {
+        renderPointShadowMap();
+    }
+
+    if (spotLightOn) {
+        renderSpotShadowMap();
+    }
 
     // Blayne prefers GL_DIFFUSE
     glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
@@ -854,7 +1208,27 @@ void TrainView::draw() {
                 smokeStartDistance, smokeEndDistance);
 
     // ---------- Draw the terrain ----------
-    terrain->draw();
+    glm::vec3 cameraPos = totemCameraPos;
+    bool enableShadow = directionalLightOn;
+    bool enableLight = directionalLightOn;
+    glm::vec3 pointLightPos = getPointLightPos();
+    bool enablePointLight = pointLightOn;
+    bool enablePointShadow = pointLightOn;
+    glm::vec3 spotLightPos = getSpotLightPos();
+    glm::vec3 spotLightDir = getSpotLightDir();
+    bool enableSpotLight = spotLightOn;
+    bool enableSpotShadow = spotLightOn;
+    float spotInnerCos = glm::cos(glm::radians(22.0f));
+    float spotOuterCos = glm::cos(glm::radians(32.0f));
+    glm::vec4 noClipPlane(0.0f);
+    terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
+                  shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
+                  enableShadow, enableLight, pointLightPos, getPointShadowMap(),
+                  getPointFarPlane(), enablePointShadow, enablePointLight,
+                  spotLightPos, spotLightDir, getSpotLightMatrix(),
+                  getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
+                  spotOuterCos, enableSpotShadow, enableSpotLight, noClipPlane,
+                  false);
 
     // ---------- Draw the plane ----------
     drawPlane();
@@ -864,14 +1238,14 @@ void TrainView::draw() {
     if (postProcessEnabled) {
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
-        int remainingEffects =
-            (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
-            (enablePixelize ? 1 : 0) + (enableCrosshatch ? 1 : 0) +
-            (enableStipple ? 1 : 0);
+        int remainingEffects = (enableToon ? 1 : 0) + (enablePaint ? 1 : 0) +
+                               (enablePixelize ? 1 : 0) +
+                               (enableCrosshatch ? 1 : 0) +
+                               (enableStipple ? 1 : 0);
 
         auto applyEffect = [&](Shader* effectShader,
-                       const std::function<void()>& setUniforms,
-                       bool toScreen) {
+                               const std::function<void()>& setUniforms,
+                               bool toScreen) {
             if (!effectShader) {
                 return;
             }
@@ -922,15 +1296,14 @@ void TrainView::draw() {
             applyEffect(
                 crosshatchShader,
                 [&]() {
-                    glUniform1f(glGetUniformLocation(
-                                    crosshatchShader->Program, "width"),
+                    glUniform1f(glGetUniformLocation(crosshatchShader->Program,
+                                                     "width"),
                                 (float)w());
-                    glUniform1f(glGetUniformLocation(
-                                    crosshatchShader->Program, "height"),
+                    glUniform1f(glGetUniformLocation(crosshatchShader->Program,
+                                                     "height"),
                                 (float)h());
-                    glUniform1i(glGetUniformLocation(
-                                    crosshatchShader->Program,
-                                    "screenTexture"),
+                    glUniform1i(glGetUniformLocation(crosshatchShader->Program,
+                                                     "screenTexture"),
                                 0);
                 },
                 isLast);
@@ -943,17 +1316,14 @@ void TrainView::draw() {
                 stippleShader,
                 [&]() {
                     glUniform1f(
-                        glGetUniformLocation(stippleShader->Program,
-                                             "width"),
+                        glGetUniformLocation(stippleShader->Program, "width"),
                         (float)w());
                     glUniform1f(
-                        glGetUniformLocation(stippleShader->Program,
-                                             "height"),
+                        glGetUniformLocation(stippleShader->Program, "height"),
                         (float)h());
-                    glUniform1i(
-                        glGetUniformLocation(stippleShader->Program,
-                                             "screenTexture"),
-                        0);
+                    glUniform1i(glGetUniformLocation(stippleShader->Program,
+                                                     "screenTexture"),
+                                0);
                 },
                 isLast);
             --remainingEffects;
@@ -984,8 +1354,7 @@ void TrainView::draw() {
                 pixelShader,
                 [&]() {
                     glUniform1f(
-                        glGetUniformLocation(pixelShader->Program,
-                                             "pixelSize"),
+                        glGetUniformLocation(pixelShader->Program, "pixelSize"),
                         5.0f);
                     glUniform1f(glGetUniformLocation(pixelShader->Program,
                                                      "screenWidth"),
@@ -1001,7 +1370,6 @@ void TrainView::draw() {
             --remainingEffects;
         }
     }
-
 
     // Unbind
     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1075,7 +1443,7 @@ void TrainView::setProjection()
 }
 
 glm::vec3 TrainView::sampleGhastDirection() {
-    static std::mt19937 rng { std::random_device {}() };
+    static std::mt19937 rng{ std::random_device{}() };
     std::uniform_real_distribution<float> dist(-1.0f, 1.0f);
     glm::vec3 dir;
     do {
@@ -1084,7 +1452,8 @@ glm::vec3 TrainView::sampleGhastDirection() {
     return glm::normalize(dir);
 }
 
-void TrainView::spawnGhastFireball(const glm::vec3& origin, const glm::vec3& dir) {
+void TrainView::spawnGhastFireball(const glm::vec3& origin,
+                                   const glm::vec3& dir) {
     GhastFireball fb;
     fb.pos = origin;
     fb.vel = dir * ghastFireSpeed;
@@ -1116,7 +1485,9 @@ void TrainView::updateGhastFireballs(float dt) {
             }
         }
 
-        float dtTrain = glm::distance(it->pos, glm::vec3(trainPosition.x, trainPosition.y, trainPosition.z));
+        float dtTrain = glm::distance(
+            it->pos,
+            glm::vec3(trainPosition.x, trainPosition.y, trainPosition.z));
         if (dtTrain <= trainHitRadius + ghastProjectileRadius) {
             resetTrainAndVillager();
             return;
@@ -1146,12 +1517,14 @@ void TrainView::drawGhastFireballs(bool doingShadows) {
             glm::mat4 model(1.0f);
             model = glm::translate(model, fb.pos);
             model = glm::rotate(model, yaw, glm::vec3(0, 1, 0));
-            tnt->draw(model, doingShadows, smokeStartDistance, smokeEndDistance);
+            tnt->draw(model, doingShadows, smokeStartDistance,
+                      smokeEndDistance);
         }
     } else {
         if (doingShadows)
             return;
-        glPushAttrib(GL_ENABLE_BIT | GL_POINT_BIT | GL_CURRENT_BIT | GL_LIGHTING_BIT);
+        glPushAttrib(GL_ENABLE_BIT | GL_POINT_BIT | GL_CURRENT_BIT |
+                     GL_LIGHTING_BIT);
         glDisable(GL_LIGHTING);
         glPointSize(50.0f);
         glBegin(GL_POINTS);
@@ -1177,7 +1550,8 @@ bool TrainView::tryPickTnt() {
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
-    gluPickMatrix((double)Fl::event_x(), (double)(viewport[3] - Fl::event_y()), 5.0, 5.0, viewport);
+    gluPickMatrix((double)Fl::event_x(), (double)(viewport[3] - Fl::event_y()),
+                  5.0, 5.0, viewport);
     setProjection();
 
     glMatrixMode(GL_MODELVIEW);
@@ -1196,17 +1570,41 @@ bool TrainView::tryPickTnt() {
         glScalef(half * 2.0f, half * 2.0f, half * 2.0f);
         glBegin(GL_QUADS);
         // +Z
-        glNormal3f(0, 0, 1); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f);
+        glNormal3f(0, 0, 1);
+        glVertex3f(-0.5f, -0.5f, 0.5f);
+        glVertex3f(0.5f, -0.5f, 0.5f);
+        glVertex3f(0.5f, 0.5f, 0.5f);
+        glVertex3f(-0.5f, 0.5f, 0.5f);
         // -Z
-        glNormal3f(0, 0, -1); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f);
+        glNormal3f(0, 0, -1);
+        glVertex3f(0.5f, -0.5f, -0.5f);
+        glVertex3f(-0.5f, -0.5f, -0.5f);
+        glVertex3f(-0.5f, 0.5f, -0.5f);
+        glVertex3f(0.5f, 0.5f, -0.5f);
         // -X
-        glNormal3f(-1, 0, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(-0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        glNormal3f(-1, 0, 0);
+        glVertex3f(-0.5f, -0.5f, -0.5f);
+        glVertex3f(-0.5f, -0.5f, 0.5f);
+        glVertex3f(-0.5f, 0.5f, 0.5f);
+        glVertex3f(-0.5f, 0.5f, -0.5f);
         // +X
-        glNormal3f(1, 0, 0); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(0.5f, 0.5f, 0.5f);
+        glNormal3f(1, 0, 0);
+        glVertex3f(0.5f, -0.5f, 0.5f);
+        glVertex3f(0.5f, -0.5f, -0.5f);
+        glVertex3f(0.5f, 0.5f, -0.5f);
+        glVertex3f(0.5f, 0.5f, 0.5f);
         // +Y
-        glNormal3f(0, 1, 0); glVertex3f(-0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, 0.5f); glVertex3f(0.5f, 0.5f, -0.5f); glVertex3f(-0.5f, 0.5f, -0.5f);
+        glNormal3f(0, 1, 0);
+        glVertex3f(-0.5f, 0.5f, 0.5f);
+        glVertex3f(0.5f, 0.5f, 0.5f);
+        glVertex3f(0.5f, 0.5f, -0.5f);
+        glVertex3f(-0.5f, 0.5f, -0.5f);
         // -Y
-        glNormal3f(0, -1, 0); glVertex3f(-0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, -0.5f); glVertex3f(0.5f, -0.5f, 0.5f); glVertex3f(-0.5f, -0.5f, 0.5f);
+        glNormal3f(0, -1, 0);
+        glVertex3f(-0.5f, -0.5f, -0.5f);
+        glVertex3f(0.5f, -0.5f, -0.5f);
+        glVertex3f(0.5f, -0.5f, 0.5f);
+        glVertex3f(-0.5f, -0.5f, 0.5f);
         glEnd();
         glPopMatrix();
     };
@@ -1424,10 +1822,9 @@ void TrainView::drawStuff(bool doingShadows) {
 
     if (subdivisionSphere) {
         if (tw && tw->sphereRecursionSlider) {
-            const int sliderRecursion = static_cast<int>(std::round(
-                tw->sphereRecursionSlider->value()));
-            const int clampedRecursion =
-                glm::clamp(sliderRecursion, 0, 6);
+            const int sliderRecursion = static_cast<int>(
+                std::round(tw->sphereRecursionSlider->value()));
+            const int clampedRecursion = glm::clamp(sliderRecursion, 0, 6);
             if (clampedRecursion != currentSphereRecursion) {
                 subdivisionSphere->setRecursionLevel(clampedRecursion);
                 currentSphereRecursion = clampedRecursion;
@@ -1452,7 +1849,7 @@ void TrainView::drawStuff(bool doingShadows) {
         if (!doingShadows)
             updateGhastMotion();
         jet->draw(ghastPosition, ghastYaw + ghastBaseYawOffset);
-    }   
+    }
     drawGhastFireballs(doingShadows);
 
 #ifdef EXAMPLE_SOLUTION
@@ -2314,9 +2711,8 @@ void TrainView::drawTrain(bool doingShadows) {
     float distanceMoved = 0.0f;
     if (wheelParamInitialized) {
         Pnt3f delta = position - previousTrainPosition;
-        distanceMoved =
-            std::sqrt(delta.x * delta.x + delta.y * delta.y +
-                      delta.z * delta.z);
+        distanceMoved = std::sqrt(delta.x * delta.x + delta.y * delta.y +
+                                  delta.z * delta.z);
     } else {
         wheelParamInitialized = true;
     }
@@ -2364,8 +2760,7 @@ void TrainView::drawTrain(bool doingShadows) {
         glTexCoord2f(0.0f, 0.0f);
         glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
         glTexCoord2f(1.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y,
-                   frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
         glVertex3f(frontTopRight.x, frontTopRight.y, frontTopRight.z);
         glTexCoord2f(0.0f, 1.0f);
@@ -2399,8 +2794,7 @@ void TrainView::drawTrain(bool doingShadows) {
         // Right face
         glNormal3f(right.x, right.y, right.z);
         glTexCoord2f(0.0f, 0.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y,
-                   frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
         glTexCoord2f(1.0f, 0.0f);
         glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
@@ -2426,14 +2820,15 @@ void TrainView::drawTrain(bool doingShadows) {
         glTexCoord2f(1.0f, 0.0f);
         glVertex3f(backBottomRight.x, backBottomRight.y, backBottomRight.z);
         glTexCoord2f(1.0f, 1.0f);
-        glVertex3f(frontBottomRight.x, frontBottomRight.y,
-                   frontBottomRight.z);
+        glVertex3f(frontBottomRight.x, frontBottomRight.y, frontBottomRight.z);
         glTexCoord2f(0.0f, 1.0f);
         glVertex3f(frontBottomLeft.x, frontBottomLeft.y, frontBottomLeft.z);
         glEnd();
 
-        const float axleInnerOffset = -1.5f; // negative moves wheels closer to center
-        const float axleInset = halfExtent + wheelWidth * 0.5f + axleInnerOffset;
+        const float axleInnerOffset =
+            -1.5f;  // negative moves wheels closer to center
+        const float axleInset =
+            halfExtent + wheelWidth * 0.5f + axleInnerOffset;
         Pnt3f bodyBottom = center - halfUp;
         Pnt3f axleCenter = bodyBottom - up * (wheelRadius + wheelBodyGap);
         const int rimSlices = 48;
@@ -2473,15 +2868,16 @@ void TrainView::drawTrain(bool doingShadows) {
                     float theta0 =
                         (static_cast<float>(i) / sectorSlices) * twoPi +
                         wheelAngle;
-                    float theta1 = (static_cast<float>(i + 1) / sectorSlices) *
-                                       twoPi + wheelAngle;
+                    float theta1 =
+                        (static_cast<float>(i + 1) / sectorSlices) * twoPi +
+                        wheelAngle;
 
-                    Pnt3f rim0 = capCenter +
-                                 (up * std::cos(theta0) +
-                                  tangent * std::sin(theta0)) * wheelRadius;
-                    Pnt3f rim1 = capCenter +
-                                 (up * std::cos(theta1) +
-                                  tangent * std::sin(theta1)) * wheelRadius;
+                    Pnt3f rim0 = capCenter + (up * std::cos(theta0) +
+                                              tangent * std::sin(theta0)) *
+                                                 wheelRadius;
+                    Pnt3f rim1 = capCenter + (up * std::cos(theta1) +
+                                              tangent * std::sin(theta1)) *
+                                                 wheelRadius;
 
                     if (!doingShadows) {
                         if (i % 2 == 0) {
@@ -2511,9 +2907,12 @@ void TrainView::drawTrain(bool doingShadows) {
     trainPosition = updatedTrainPosition;
     trainForward = tangent;
     trainUp = up;
-    
-    if (useMinecraftTrain && !tw->trainCam->value() && mcMinecart && mcVillager) {
-        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+
+    if (useMinecraftTrain && !tw->trainCam->value() && mcMinecart &&
+        mcVillager) {
+        auto toGlm = [](const Pnt3f& p) {
+            return glm::vec3(p.x, p.y, p.z);
+        };
 
         const float heightOffset = 2.0f;
         Pnt3f raisedPosition = position + up * heightOffset;
@@ -2524,26 +2923,28 @@ void TrainView::drawTrain(bool doingShadows) {
         basis[2] = glm::vec4(toGlm(tangent), 0.0f);
         basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
-        const glm::mat4 assetFix =
-            glm::rotate(glm::mat4(1.0f), glm::radians(-90.0f),
-                        glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 assetFix = glm::rotate(
+            glm::mat4(1.0f), glm::radians(-90.0f), glm::vec3(0.0f, 1.0f, 0.0f));
 
         glm::mat4 modelMatrix = basis * assetFix;
         glm::mat4 villagerOffset =
             glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 3.0f, 0.0f));
 
-        glm::vec4 villagerWorld = modelMatrix / assetFix * villagerOffset * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        glm::vec4 villagerWorld = modelMatrix / assetFix * villagerOffset *
+                                  glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         villagerWorldPos = glm::vec3(villagerWorld);
         villagerPosValid = true;
-            
-        mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows, smokeStartDistance,
-                        smokeEndDistance);
+
+        mcVillager->draw(modelMatrix / assetFix * villagerOffset, doingShadows,
+                         smokeStartDistance, smokeEndDistance);
         mcMinecart->draw(modelMatrix, doingShadows, smokeStartDistance,
                          smokeEndDistance);
     }
 
-    if(useMinecraftTrain && !tw->trainCam->value()) {
-        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+    if (useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) {
+            return glm::vec3(p.x, p.y, p.z);
+        };
 
         const float heightOffset = 5.0f;
         Pnt3f raisedPosition = position + up * heightOffset;
@@ -2555,14 +2956,17 @@ void TrainView::drawTrain(bool doingShadows) {
         basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
         glm::mat4 modelMatrix = basis;
-        glm::vec4 villagerWorld = modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        glm::vec4 villagerWorld =
+            modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         villagerWorldPos = glm::vec3(villagerWorld);
         villagerPosValid = true;
 
         mcVillager->draw(modelMatrix, doingShadows, smokeStartDistance,
-                        smokeEndDistance);
-    }else if(!useMinecraftTrain && !tw->trainCam->value()) {
-        auto toGlm = [](const Pnt3f& p) { return glm::vec3(p.x, p.y, p.z); };
+                         smokeEndDistance);
+    } else if (!useMinecraftTrain && !tw->trainCam->value()) {
+        auto toGlm = [](const Pnt3f& p) {
+            return glm::vec3(p.x, p.y, p.z);
+        };
 
         const float heightOffset = 10.0f;
         Pnt3f raisedPosition = position + up * heightOffset;
@@ -2574,12 +2978,13 @@ void TrainView::drawTrain(bool doingShadows) {
         basis[3] = glm::vec4(toGlm(raisedPosition), 1.0f);
 
         glm::mat4 modelMatrix = basis;
-        glm::vec4 villagerWorld = modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+        glm::vec4 villagerWorld =
+            modelMatrix * glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
         villagerWorldPos = glm::vec3(villagerWorld);
         villagerPosValid = true;
 
         soldier->draw(modelMatrix, doingShadows, smokeStartDistance,
-                        smokeEndDistance);
+                      smokeEndDistance);
     }
 }
 
@@ -2800,4 +3205,3 @@ void TrainView::doPick()
 
     printf("Selected Cube %d\n", selectedCube);
 }
-
