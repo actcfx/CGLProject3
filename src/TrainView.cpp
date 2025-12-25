@@ -65,14 +65,26 @@ static bool g_bgmStarted = false;
 
 static bool fileExistsW(const std::wstring& path) {
     DWORD attr = GetFileAttributesW(path.c_str());
-    return attr != INVALID_FILE_ATTRIBUTES &&
-           !(attr & FILE_ATTRIBUTE_DIRECTORY);
+    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-// Try to resolve the BGM path by checking multiple candidate locations.
-static std::wstring resolveBgmPath(std::wstring& triedLog) {
-    // Requested path for BGM: assets/bgm/minecraft.mp3 (resolved relative to exe/cwd)
-    const std::wstring relMp3 = L"assets\\bgm\\minecraft.mp3";
+static void collectMp3InDir(const std::wstring& dir, std::vector<std::wstring>& out) {
+    if (dir.empty()) return;
+    std::wstring pattern = dir + L"\\*.mp3";
+    WIN32_FIND_DATAW fd;
+    HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
+    if (h == INVALID_HANDLE_VALUE) return;
+    do {
+        if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+            out.push_back(dir + L"\\" + fd.cFileName);
+        }
+    } while (FindNextFileW(h, &fd));
+    FindClose(h);
+}
+
+// Try to resolve a random BGM path by checking multiple candidate locations.
+static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
+    const std::wstring relDir = L"assets\\bgm";
 
     wchar_t exePath[MAX_PATH] = { 0 };
     DWORD len = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
@@ -85,30 +97,33 @@ static std::wstring resolveBgmPath(std::wstring& triedLog) {
         }
     }
 
-    // working directory
-    wchar_t cwdBuf[MAX_PATH] = { 0 };
+    wchar_t cwdBuf[MAX_PATH] = {0};
     GetCurrentDirectoryW(MAX_PATH, cwdBuf);
     std::wstring cwd(cwdBuf);
 
-    std::wstring candidates[] = {
-        base.empty() ? L"" : (base + L"\\" + relMp3),
-        base.empty() ? L"" : (base + L"\\..\\" + relMp3),
-        base.empty() ? L"" : (base + L"\\..\\..\\" + relMp3),
-        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relMp3),
-        cwd.empty() ? L"" : (cwd + L"\\" + relMp3),
-        relMp3
+    std::vector<std::wstring> candidateDirs = {
+        base.empty() ? L"" : (base + L"\\" + relDir),
+        base.empty() ? L"" : (base + L"\\..\\" + relDir),
+        base.empty() ? L"" : (base + L"\\..\\..\\" + relDir),
+        base.empty() ? L"" : (base + L"\\..\\..\\..\\" + relDir),
+        cwd.empty() ? L"" : (cwd + L"\\" + relDir),
+        relDir
     };
 
     triedLog.clear();
-    for (const auto& p : candidates) {
-        if (!p.empty()) {
-            triedLog += p + L"\n";
-            if (fileExistsW(p)) {
-                return p;
-            }
-        }
+    std::vector<std::wstring> found;
+    for (const auto& dir : candidateDirs) {
+        if (dir.empty()) continue;
+        triedLog += dir + L"\\*.mp3\n";
+        collectMp3InDir(dir, found);
     }
-    return L"";
+
+    if (found.empty()) return L"";
+
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<size_t> dist(0, found.size() - 1);
+    return found[dist(gen)];
 }
 
 static void startBgmOnce() {
@@ -116,10 +131,9 @@ static void startBgmOnce() {
         return;
 
     std::wstring tried;
-    std::wstring path = resolveBgmPath(tried);
+    std::wstring path = resolveRandomBgmPath(tried);
     if (path.empty()) {
-        std::cerr << "BGM not found. Place assets/bgm/minecraft.wav (or .mp3) "
-                     "next to the executable.\nTried paths:\n";
+        std::cerr << "BGM not found. Place .mp3 files under assets/bgm next to the executable.\nTried patterns:\n";
         std::wcerr << tried.c_str();
         return;
     }
@@ -1036,6 +1050,8 @@ void TrainView::draw() {
             water->initSineWave();
         } else if (shaderType == 5) {
             water->initReflectionWater(this);
+        } else if (shaderType == 6) {
+            church->initSierpinski();
         }
         lastShader = shaderType;
     }
@@ -1065,6 +1081,11 @@ void TrainView::draw() {
         this->plane = water->plane;
         this->texture = water->texture;
         this->commonMatrices = water->commonMatrices;
+    } else if (shaderType == 6) {
+        this->shader = church->shader;
+        this->plane = church->plane;
+        this->texture = church->texture;
+        this->commonMatrices = church->commonMatrices;
     } else {
         clearGlad();
     }
