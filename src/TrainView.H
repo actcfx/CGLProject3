@@ -242,6 +242,7 @@ private:
     Shader* crosshatchShader = nullptr;
     Shader* stippleShader = nullptr;
     Shader* grayscaleShader = nullptr;
+    Shader* edgeShader = nullptr;
 
     void initFrameBufferShader();
 

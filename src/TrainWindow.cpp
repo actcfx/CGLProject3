@@ -33,7 +33,6 @@
 #include <assimp/scene.h>
 #include <assimp/Importer.hpp>
 
-
 // for using the real time clock
 #include <time.h>
 
@@ -221,6 +220,9 @@ TrainWindow::TrainWindow(const int x, const int y)
 
         grayscaleButton = new Fl_Button(605, pty, 60, 20, "Gray");
         togglify(grayscaleButton, 0);
+
+        edgeButton = new Fl_Button(670, pty, 60, 20, "Edge");
+        togglify(edgeButton, 0);
 
         pty += 30;
 
