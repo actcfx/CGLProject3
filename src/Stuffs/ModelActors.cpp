@@ -6,7 +6,6 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <string>
 
-
 #include "../RenderUtilities/Model.h"
 #include "../RenderUtilities/Shader.h"
 #include "../TrainView.H"
@@ -110,7 +109,8 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
     if (owner) {
         setMat4("uLightSpace", owner->getLightSpaceMatrix());
 
-        const GLint dirLoc = glGetUniformLocation(shader->Program, "u_lightDir");
+        const GLint dirLoc =
+            glGetUniformLocation(shader->Program, "u_lightDir");
         if (dirLoc >= 0) {
             glm::vec3 dir = owner->getDirLightDir();
             glUniform3fv(dirLoc, 1, &dir[0]);
@@ -164,8 +164,9 @@ void ModelActor::drawInternal(const glm::mat4& modelMatrix, bool doingShadows,
     if (glIsEnabled(GL_CLIP_PLANE0)) {
         double clippedPlaneEquation[4];
         glGetClipPlane(GL_CLIP_PLANE0, clippedPlaneEquation);
-        clipPlane = glm::vec4((float)clippedPlaneEquation[0], (float)clippedPlaneEquation[1],
-                              (float)clippedPlaneEquation[2], (float)clippedPlaneEquation[3]);
+        clipPlane = glm::vec4(
+            (float)clippedPlaneEquation[0], (float)clippedPlaneEquation[1],
+            (float)clippedPlaneEquation[2], (float)clippedPlaneEquation[3]);
     }
 
     // Set clip plane uniform

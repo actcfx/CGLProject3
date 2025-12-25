@@ -1210,18 +1210,17 @@ void TrainView::draw() {
     float spotOuterCos = glm::cos(glm::radians(32.0f));
     glm::vec4 noClipPlane(0.0f);
     glm::vec2 smokeParams(smokeStartDistance, smokeEndDistance);
-    bool smokeEnabled = (tw && tw->smokeButton) ? (tw->smokeButton->value() != 0)
-                                                : false;
+    bool smokeEnabled =
+        (tw && tw->smokeButton) ? (tw->smokeButton->value() != 0) : false;
 
     terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
                   shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
                   smokeParams, smokeEnabled, enableShadow, enableLight,
-                  pointLightPos, getPointShadowMap(),
-                  getPointFarPlane(), enablePointShadow, enablePointLight,
-                  spotLightPos, spotLightDir, getSpotLightMatrix(),
-                  getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
-                  spotOuterCos, enableSpotShadow, enableSpotLight, noClipPlane,
-                  false);
+                  pointLightPos, getPointShadowMap(), getPointFarPlane(),
+                  enablePointShadow, enablePointLight, spotLightPos,
+                  spotLightDir, getSpotLightMatrix(), getSpotShadowMap(),
+                  getSpotFarPlane(), spotInnerCos, spotOuterCos,
+                  enableSpotShadow, enableSpotLight, noClipPlane, false);
 
     // ---------- Draw the plane ----------
     drawPlane();

@@ -430,9 +430,9 @@ public:
                      glm::value_ptr(viewPos));
 
         glUniform2fv(glGetUniformLocation(shader->Program, "u_smokeParams"), 1,
-                 glm::value_ptr(smokeParams));
+                     glm::value_ptr(smokeParams));
         glUniform1i(glGetUniformLocation(shader->Program, "smokeEnabled"),
-                smokeEnabled ? 1 : 0);
+                    smokeEnabled ? 1 : 0);
         glUniform1i(glGetUniformLocation(shader->Program, "u_enableShadow"),
                     enableShadow ? 1 : 0);
         glUniform1i(glGetUniformLocation(shader->Program, "u_enableLight"),

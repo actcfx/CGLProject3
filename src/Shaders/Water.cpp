@@ -617,11 +617,11 @@ void Water::renderReflection(TrainView* tw) {
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
             tw->getShadowMap(), tw->getDirLightDir(), cameraPos, smokeParams,
             smokeEnabled, enableShadow, enableLight, pointLightPos,
-            tw->getPointShadowMap(),
-            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
-            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
-            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
-            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
+            tw->getPointShadowMap(), tw->getPointFarPlane(), enablePointShadow,
+            enablePointLight, spotLightPos, spotLightDir,
+            tw->getSpotLightMatrix(), tw->getSpotShadowMap(),
+            tw->getSpotFarPlane(), spotInnerCos, spotOuterCos, enableSpotShadow,
+            enableSpotLight, clipPlane, true);
     }
 
     glEnable(GL_LIGHTING);
@@ -720,11 +720,11 @@ void Water::renderRefraction(TrainView* tw) {
             view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
             tw->getShadowMap(), tw->getDirLightDir(), cameraPos, smokeParams,
             smokeEnabled, enableShadow, enableLight, pointLightPos,
-            tw->getPointShadowMap(),
-            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
-            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
-            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
-            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
+            tw->getPointShadowMap(), tw->getPointFarPlane(), enablePointShadow,
+            enablePointLight, spotLightPos, spotLightDir,
+            tw->getSpotLightMatrix(), tw->getSpotShadowMap(),
+            tw->getSpotFarPlane(), spotInnerCos, spotOuterCos, enableSpotShadow,
+            enableSpotLight, clipPlane, true);
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points
