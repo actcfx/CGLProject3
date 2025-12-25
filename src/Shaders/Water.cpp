@@ -588,7 +588,35 @@ void Water::renderReflection(TrainView* tw) {
 
     // Draw terrain in reflection (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        tw->terrain->draw();
+        glm::mat4 view_matrix;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+        glm::mat4 projection_matrix;
+        glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
+        glm::mat4 invView = glm::inverse(view_matrix);
+        glm::vec3 cameraPos = glm::vec3(invView[3]);
+        bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
+                            tw->tw->directionalLightButton->value() != 0;
+        bool enableLight = enableShadow;
+        bool enablePointLight = tw->tw && tw->tw->pointLightButton &&
+                                tw->tw->pointLightButton->value() != 0;
+        bool enablePointShadow = enablePointLight;
+        glm::vec3 pointLightPos = tw->getPointLightPos();
+        bool enableSpotLight = tw->tw && tw->tw->spotLightButton &&
+                               tw->tw->spotLightButton->value() != 0;
+        bool enableSpotShadow = enableSpotLight;
+        glm::vec3 spotLightPos = tw->getSpotLightPos();
+        glm::vec3 spotLightDir = tw->getSpotLightDir();
+        float spotInnerCos = glm::cos(glm::radians(22.0f));
+        float spotOuterCos = glm::cos(glm::radians(32.0f));
+        glm::vec4 clipPlane(0.0f, 1.0f, 0.0f, -waterHeight);
+        tw->terrain->draw(
+            view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
+            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
+            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
+            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
+            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
     }
 
     glEnable(GL_LIGHTING);
@@ -656,10 +684,37 @@ void Water::renderRefraction(TrainView* tw) {
     glEnable(GL_LIGHTING);
     setupObjects();
 
-    // Draw terrain in refraction
     // Draw terrain in refraction (respect clip plane — keep GL_CLIP_PLANE0 enabled)
     if (tw->terrain) {
-        tw->terrain->draw();
+        glm::mat4 view_matrix;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &view_matrix[0][0]);
+        glm::mat4 projection_matrix;
+        glGetFloatv(GL_PROJECTION_MATRIX, &projection_matrix[0][0]);
+        glm::mat4 invView = glm::inverse(view_matrix);
+        glm::vec3 cameraPos = glm::vec3(invView[3]);
+        bool enableShadow = tw->tw && tw->tw->directionalLightButton &&
+                            tw->tw->directionalLightButton->value() != 0;
+        bool enableLight = enableShadow;
+        bool enablePointLight = tw->tw && tw->tw->pointLightButton &&
+                                tw->tw->pointLightButton->value() != 0;
+        bool enablePointShadow = enablePointLight;
+        glm::vec3 pointLightPos = tw->getPointLightPos();
+        bool enableSpotLight = tw->tw && tw->tw->spotLightButton &&
+                               tw->tw->spotLightButton->value() != 0;
+        bool enableSpotShadow = enableSpotLight;
+        glm::vec3 spotLightPos = tw->getSpotLightPos();
+        glm::vec3 spotLightDir = tw->getSpotLightDir();
+        float spotInnerCos = glm::cos(glm::radians(22.0f));
+        float spotOuterCos = glm::cos(glm::radians(32.0f));
+        glm::vec4 clipPlane(0.0f, -1.0f, 0.0f, waterHeight);
+        tw->terrain->draw(
+            view_matrix, projection_matrix, tw->getLightSpaceMatrix(),
+            tw->getShadowMap(), tw->getDirLightDir(), cameraPos, enableShadow,
+            enableLight, pointLightPos, tw->getPointShadowMap(),
+            tw->getPointFarPlane(), enablePointShadow, enablePointLight,
+            spotLightPos, spotLightDir, tw->getSpotLightMatrix(),
+            tw->getSpotShadowMap(), tw->getSpotFarPlane(), spotInnerCos,
+            spotOuterCos, enableSpotShadow, enableSpotLight, clipPlane, true);
     }
 
     // Draw all scene elements clipped below water: track, train, oden, control points
