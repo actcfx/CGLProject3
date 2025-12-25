@@ -245,6 +245,9 @@ private:
     Shader* edgeShader = nullptr;
     Shader* fxaaShader = nullptr;
 
+    Shader* odenBumpShader = nullptr;
+    Texture2D* odenBumpTexture = nullptr;
+
     void initFrameBufferShader();
 
     float smokeStartDistance = 100.0f;

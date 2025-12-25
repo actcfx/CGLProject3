@@ -1408,29 +1408,53 @@ void TrainView::draw() {
 
         if (enableAA) {
             bool isLast = remainingEffects == 1;
-            applyEffect(
-                fxaaShader,
-                [&]() {
-                    glUniform1f(
-                        glGetUniformLocation(fxaaShader->Program, "width"),
+            if (!fxaaShader) {
+                --remainingEffects;
+                return;
+            }
+
+            if (isLast) {
+                glBindFramebuffer(GL_FRAMEBUFFER, 0);
+                glViewport(0, 0, w(), h());
+            } else {
+                writeBuffer->bind();
+                glViewport(0, 0, this->pixel_w(), this->pixel_h());
+            }
+
+            glClear(GL_COLOR_BUFFER_BIT);
+            fxaaShader->Use();
+
+            // FXAA depends on fractional-offset sampling, which requires
+            // linear filtering. Our post-process FBO uses GL_NEAREST for
+            // pixelization, so temporarily switch to GL_LINEAR just for this pass.
+            readBuffer->bindTexture(0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "width"),
                         (float)w());
-                    glUniform1f(
-                        glGetUniformLocation(fxaaShader->Program, "height"),
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "height"),
                         (float)h());
-                    glUniform1f(
-                        glGetUniformLocation(fxaaShader->Program, "spanMax"),
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "spanMax"),
                         8.0f);
-                    glUniform1f(
-                        glGetUniformLocation(fxaaShader->Program, "reduceMin"),
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMin"),
                         1.0f / 128.0f);
-                    glUniform1f(
-                        glGetUniformLocation(fxaaShader->Program, "reduceMul"),
+            glUniform1f(glGetUniformLocation(fxaaShader->Program, "reduceMul"),
                         1.0f / 8.0f);
-                    glUniform1i(glGetUniformLocation(fxaaShader->Program,
-                                                     "screenTexture"),
-                                0);
-                },
-                isLast);
+            glUniform1i(
+                glGetUniformLocation(fxaaShader->Program, "screenTexture"), 0);
+
+            readBuffer->drawQuad();
+
+            // Restore default filtering so other effects (pixelization) stay crisp.
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+            if (!isLast) {
+                FrameBuffer* temp = readBuffer;
+                readBuffer = writeBuffer;
+                writeBuffer = temp;
+            }
             --remainingEffects;
         }
     }
@@ -3286,10 +3310,58 @@ void TrainView::drawOden(bool doingShadows) {
     const float porkBallRadius = 10.0f;
     glPushMatrix();
     glTranslatef(0.0f, 0.6f * tofuHeight, 0.7f * tofuWidth);
+
+    const bool bumpEnabled = (!doingShadows) && tw && tw->bumpButton &&
+                             (tw->bumpButton->value() != 0);
+    if (bumpEnabled) {
+        if (!odenBumpShader) {
+            odenBumpShader =
+                new Shader("./shaders/odenBump.vert", nullptr, nullptr, nullptr,
+                           "./shaders/odenBump.frag");
+        }
+        if (!odenBumpTexture) {
+            odenBumpTexture = new Texture2D("./images/bumpMapping.png",
+                                            Texture2D::TEXTURE_HEIGHT);
+        }
+
+        const bool directionalLightOn = tw && tw->directionalLightButton &&
+                                        tw->directionalLightButton->value();
+        const bool pointLightOn =
+            tw && tw->pointLightButton && tw->pointLightButton->value();
+        const bool spotLightOn =
+            tw && tw->spotLightButton && tw->spotLightButton->value();
+
+        odenBumpShader->Use();
+        odenBumpTexture->bind(0);
+        odenBumpShader->setInt("u_bumpTex", 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"), 1);
+        glUniform1f(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
+            2.5f);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
+            directionalLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
+            pointLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
+            spotLightOn ? 1 : 0);
+    }
+
     GLUquadric* quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
+    if (bumpEnabled) {
+        gluQuadricTexture(quad, GL_TRUE);
+    }
     gluSphere(quad, porkBallRadius, 16, 16);
     gluDeleteQuadric(quad);
+
+    if (bumpEnabled) {
+        Texture2D::unbind(0);
+        glUseProgram(0);
+    }
     glPopMatrix();
 
     // ---------- Pig blood cake ----------

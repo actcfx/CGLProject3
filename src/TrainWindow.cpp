@@ -237,6 +237,10 @@ TrainWindow::TrainWindow(const int x, const int y)
         minecraftButton = new Fl_Button(670, pty, 60, 20, "Minecraft");
         togglify(minecraftButton, 1);
 
+        // ---------- Oden bump mapping toggle ----------
+        bumpButton = new Fl_Button(735, pty, 60, 20, "Bump");
+        togglify(bumpButton, 0);
+
         pty += 30;
 
         // (deleted) ---------- Reflection/Refraction Ratio Slider ----------

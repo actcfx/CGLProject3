@@ -114,6 +114,8 @@ public:
 
     Fl_Button* aaButton;
 
+    Fl_Button* bumpButton;
+
     Fl_Value_Slider* reflectRefractSlider;
 
     Fl_Value_Slider* sphereRecursionSlider;
