@@ -88,7 +88,7 @@ static void collectMp3InDir(const std::wstring& dir,
 
 // Try to resolve a random BGM path by checking multiple candidate locations.
 static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
-    const std::wstring relDir = L"assets\\bgm";
+    const std::wstring relDir = L"bgm";
 
     wchar_t exePath[MAX_PATH] = { 0 };
     DWORD len = GetModuleFileNameW(nullptr, exePath, MAX_PATH);
