@@ -191,6 +191,7 @@ TrainWindow::TrainWindow(const int x, const int y)
         shaderBrowser->add("Height Map Wave");
         shaderBrowser->add("Sine Wave");
         shaderBrowser->add("Water Reflect");
+        shaderBrowser->add("Sierpinski Triangle");
 
         shaderBrowser->select(2);
 
