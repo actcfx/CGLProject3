@@ -1171,10 +1171,25 @@ void TrainView::draw() {
     const bool spotLightOn =
         tw && tw->spotLightButton && tw->spotLightButton->value();
 
-    // Post-processing leaves a GLSL program bound (full-screen shader).
+    // Post-processing (full-screen quad) can leave GL state bound.
     // Shadow-map rendering uses fixed-function transforms + mixed draw paths,
-    // so ensure we start shadow passes with program 0.
+    // so aggressively reset a few key states before any shadow pass.
     glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w(), h());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glBindVertexArray(0);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
     if (directionalLightOn) {
         renderShadowMap();
@@ -1548,6 +1563,20 @@ void TrainView::draw() {
         // Ensure we don't leak a post-process shader into the next frame.
         glUseProgram(0);
         glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
+        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDisable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
         if (fogWasEnabled) {
             glEnable(GL_FOG);
@@ -1557,7 +1586,11 @@ void TrainView::draw() {
     // Unbind
     glUseProgram(0);
     glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w(), h());
     glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glBindVertexArray(0);
 }
 
 //************************************************************************
