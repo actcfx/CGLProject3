@@ -4,8 +4,10 @@ layout (location = 1) in vec3 normal;
 
 out vec3 vs_worldpos;
 out vec3 vs_normal;
+out vec4 vLightSpacePos;
 
 uniform mat4 u_model;
+uniform mat4 uLightSpace;
 
 layout (std140, binding = 0) uniform commom_matrices
 {
@@ -56,4 +58,5 @@ void main(void){
     gl_Position = u_projection * u_view * worldPos;
     vs_worldpos = worldPos.xyz;
     vs_normal = normalize(mat3(u_model) * newNormal);
+    vLightSpacePos = uLightSpace * worldPos;
 }

@@ -6,6 +6,7 @@ in vec3 vWorldPos;
 in vec3 vNormal;
 in vec2 vTexCoord;
 in vec4 vClipSpace;
+in vec4 vLightSpacePos;
 
 uniform sampler2D u_reflectionTex;
 uniform sampler2D u_refractionTex;
@@ -21,6 +22,36 @@ uniform float u_reflectRefractRatio;
 uniform vec3 u_waterColor;
 uniform vec2 u_smokeParams;
 uniform bool smokeEnabled;
+
+uniform sampler2D u_shadowMap;
+uniform vec3 u_lightDir;
+uniform bool u_enableShadow;
+
+float computeShadow(vec3 normal, vec4 lightSpacePos) {
+    vec3 projCoords = lightSpacePos.xyz / lightSpacePos.w;
+    projCoords = projCoords * 0.5 + 0.5;
+
+    if (projCoords.x < 0.0 || projCoords.x > 1.0 ||
+        projCoords.y < 0.0 || projCoords.y > 1.0 ||
+        projCoords.z > 1.0)
+        return 0.0;
+
+    vec3 N = normalize(normal);
+    vec3 L = normalize(-u_lightDir);
+    float bias = max(0.0009, 0.0015 * (1.0 - dot(N, L)));
+
+    float shadow = 0.0;
+    vec2 texelSize = 1.0 / vec2(textureSize(u_shadowMap, 0));
+    for (int x = -1; x <= 1; ++x) {
+        for (int y = -1; y <= 1; ++y) {
+            float pcfDepth = texture(u_shadowMap,
+                                     projCoords.xy + vec2(x, y) * texelSize).r;
+            shadow += (projCoords.z - bias > pcfDepth) ? 1.0 : 0.0;
+        }
+    }
+    shadow /= 9.0;
+    return shadow;
+}
 
 // Procedural normal waves for realistic water surface
 vec3 computeNormal()
@@ -91,6 +122,12 @@ void main()
 
     // Add water color for absorption effect
     combined = mix(combined, u_waterColor, 0.06 + depthFade * 0.2);
+
+    float shadow = 0.0;
+    if (u_enableShadow) {
+        shadow = computeShadow(vNormal, vLightSpacePos);
+    }
+    combined *= (1.0 - 0.7 * shadow);
 
     float smoke = 0.0;
     if (u_smokeParams.y > u_smokeParams.x && u_smokeParams.x >= 0.0) {

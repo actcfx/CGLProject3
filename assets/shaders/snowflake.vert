@@ -5,6 +5,7 @@ layout (location = 2) in vec2 texture_coordinate;
 layout (location = 3) in vec3 barycentric;
 
 uniform mat4 u_model;
+uniform mat4 uLightSpace;
 
 layout (std140, binding = 0) uniform commom_matrices {
     mat4 u_projection;
@@ -16,6 +17,7 @@ out V_OUT {
     vec3 normal;
     vec3 bary;
     vec2 uv;
+    vec4 lightSpacePos;
 } v_out;
 
 void main() {
@@ -26,4 +28,5 @@ void main() {
     v_out.normal = mat3(transpose(inverse(u_model))) * normal;
     v_out.bary = barycentric;
     v_out.uv = texture_coordinate;
+    v_out.lightSpacePos = uLightSpace * world;
 }

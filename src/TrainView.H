@@ -248,6 +248,10 @@ private:
     Shader* odenBumpShader = nullptr;
     Texture2D* odenBumpTexture = nullptr;
 
+    // Cached per-frame inverse view matrix (view^-1) for compatibility shaders
+    // that need to reconstruct world-space from eye-space.
+    glm::mat4 cachedInvViewMatrix{ 1.0f };
+
     void initFrameBufferShader();
 
     float smokeStartDistance = 100.0f;
