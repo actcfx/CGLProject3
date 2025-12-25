@@ -48,6 +48,12 @@ public:
             glDeleteRenderbuffers(1, &rbo);
         }
 
+        // Preserve active texture binding state; framebuffer setup should not
+        // depend on whatever texture unit the caller last used.
+        GLint prevActiveTexture = GL_TEXTURE0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+        glActiveTexture(GL_TEXTURE0);
+
         // 1. Create Framebuffer
         glGenFramebuffers(1, &ID);
         glBindFramebuffer(GL_FRAMEBUFFER, ID);
@@ -81,6 +87,10 @@ public:
                       << std::endl;
 
         glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        // Avoid leaking bindings / active texture changes.
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glActiveTexture(prevActiveTexture);
     }
 
     // Start writing to this FBO

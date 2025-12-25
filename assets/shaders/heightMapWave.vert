@@ -6,8 +6,10 @@ layout (location = 2) in vec2 texcoord;
 out vec3 vs_worldpos;
 out vec3 vs_normal;
 out vec2 vs_texcoord;
+out vec4 vLightSpacePos;
 
 uniform mat4 u_model;
+uniform mat4 uLightSpace;
 
 layout (std140, binding = 0) uniform commom_matrices
 {
@@ -52,4 +54,5 @@ void main(void){
     vs_worldpos = worldPos.xyz;
     vs_normal = normalize(mat3(u_model) * newNormal);
     vs_texcoord = texcoord; // Pass original texcoord for shading if needed
+    vLightSpacePos = uLightSpace * worldPos;
 }

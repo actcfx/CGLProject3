@@ -9,16 +9,20 @@ uniform mat4 uView;
 uniform mat4 uProjection;
 uniform mat3 uNormalMatrix;
 uniform vec4 uClipPlane;
+uniform mat4 uLightSpace;
 
 out vec2 vTexCoord;
 out vec3 vNormal;
 out vec3 vWorldPos;
+out vec4 vLightSpacePos;
 
 void main() {
     vec4 worldPos = uModel * vec4(aPos, 1.0);
     vWorldPos = worldPos.xyz;
     vNormal = normalize(uNormalMatrix * aNormal);
     vTexCoord = aTexCoord;
+
+    vLightSpacePos = uLightSpace * worldPos;
 
     vec4 eyePos = uView * worldPos;
     gl_ClipDistance[0] = dot(uClipPlane, eyePos);

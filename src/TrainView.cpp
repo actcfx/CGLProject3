@@ -65,15 +65,19 @@ static bool g_bgmStarted = false;
 
 static bool fileExistsW(const std::wstring& path) {
     DWORD attr = GetFileAttributesW(path.c_str());
-    return attr != INVALID_FILE_ATTRIBUTES && !(attr & FILE_ATTRIBUTE_DIRECTORY);
+    return attr != INVALID_FILE_ATTRIBUTES &&
+           !(attr & FILE_ATTRIBUTE_DIRECTORY);
 }
 
-static void collectMp3InDir(const std::wstring& dir, std::vector<std::wstring>& out) {
-    if (dir.empty()) return;
+static void collectMp3InDir(const std::wstring& dir,
+                            std::vector<std::wstring>& out) {
+    if (dir.empty())
+        return;
     std::wstring pattern = dir + L"\\*.mp3";
     WIN32_FIND_DATAW fd;
     HANDLE h = FindFirstFileW(pattern.c_str(), &fd);
-    if (h == INVALID_HANDLE_VALUE) return;
+    if (h == INVALID_HANDLE_VALUE)
+        return;
     do {
         if (!(fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
             out.push_back(dir + L"\\" + fd.cFileName);
@@ -97,7 +101,7 @@ static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
         }
     }
 
-    wchar_t cwdBuf[MAX_PATH] = {0};
+    wchar_t cwdBuf[MAX_PATH] = { 0 };
     GetCurrentDirectoryW(MAX_PATH, cwdBuf);
     std::wstring cwd(cwdBuf);
 
@@ -113,12 +117,14 @@ static std::wstring resolveRandomBgmPath(std::wstring& triedLog) {
     triedLog.clear();
     std::vector<std::wstring> found;
     for (const auto& dir : candidateDirs) {
-        if (dir.empty()) continue;
+        if (dir.empty())
+            continue;
         triedLog += dir + L"\\*.mp3\n";
         collectMp3InDir(dir, found);
     }
 
-    if (found.empty()) return L"";
+    if (found.empty())
+        return L"";
 
     std::random_device rd;
     std::mt19937 gen(rd());
@@ -133,7 +139,8 @@ static void startBgmOnce() {
     std::wstring tried;
     std::wstring path = resolveRandomBgmPath(tried);
     if (path.empty()) {
-        std::cerr << "BGM not found. Place .mp3 files under assets/bgm next to the executable.\nTried patterns:\n";
+        std::cerr << "BGM not found. Place .mp3 files under assets/bgm next to "
+                     "the executable.\nTried patterns:\n";
         std::wcerr << tried.c_str();
         return;
     }
@@ -972,6 +979,41 @@ void TrainView::drawPlane() {
     glUniform3fv(glGetUniformLocation(this->shader->Program, "u_cameraPos"), 1,
                  &cameraPos[0]);
 
+    // Directional shadow-map uniforms (optional per-shader)
+    const bool enableShadow = (tw && tw->directionalLightButton &&
+                               tw->directionalLightButton->value() != 0);
+
+    GLint enableShadowLoc =
+        glGetUniformLocation(this->shader->Program, "u_enableShadow");
+    if (enableShadowLoc >= 0) {
+        glUniform1i(enableShadowLoc, enableShadow ? 1 : 0);
+    }
+
+    GLint lightDirLoc =
+        glGetUniformLocation(this->shader->Program, "u_lightDir");
+    if (lightDirLoc >= 0) {
+        glm::vec3 lightDir = getDirLightDir();
+        glUniform3fv(lightDirLoc, 1, &lightDir[0]);
+    }
+
+    GLint lightSpaceLoc =
+        glGetUniformLocation(this->shader->Program, "uLightSpace");
+    if (lightSpaceLoc >= 0) {
+        glm::mat4 ls = getLightSpaceMatrix();
+        glUniformMatrix4fv(lightSpaceLoc, 1, GL_FALSE, &ls[0][0]);
+    }
+
+    GLint shadowMapLoc =
+        glGetUniformLocation(this->shader->Program, "u_shadowMap");
+    if (shadowMapLoc >= 0) {
+        GLint prevActiveTexture = GL_TEXTURE0;
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+        glActiveTexture(GL_TEXTURE10);
+        glBindTexture(GL_TEXTURE_2D, getShadowMap());
+        glUniform1i(shadowMapLoc, 10);
+        glActiveTexture(prevActiveTexture);
+    }
+
     GLint smokeLoc =
         glGetUniformLocation(this->shader->Program, "u_smokeParams");
     if (smokeLoc >= 0) {
@@ -1129,6 +1171,26 @@ void TrainView::draw() {
     const bool spotLightOn =
         tw && tw->spotLightButton && tw->spotLightButton->value();
 
+    // Post-processing (full-screen quad) can leave GL state bound.
+    // Shadow-map rendering uses fixed-function transforms + mixed draw paths,
+    // so aggressively reset a few key states before any shadow pass.
+    glUseProgram(0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w(), h());
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glBindVertexArray(0);
+    glDisable(GL_SCISSOR_TEST);
+    glDisable(GL_BLEND);
+    glDisable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+    glDisable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
     if (directionalLightOn) {
         renderShadowMap();
     }
@@ -1182,6 +1244,14 @@ void TrainView::draw() {
 
     skybox->draw(view_matrix, projection_matrix);
 
+    // Cache inverse view matrix for compatibility shaders (oden/subdivision sphere)
+    // At this point, modelview should represent the camera view (no per-object model transforms).
+    {
+        glm::mat4 baseView;
+        glGetFloatv(GL_MODELVIEW_MATRIX, &baseView[0][0]);
+        cachedInvViewMatrix = glm::inverse(baseView);
+    }
+
     // ---------- Draw the objects and shadows ----------
     glUseProgram(0);
     glEnable(GL_LIGHTING);
@@ -1189,8 +1259,10 @@ void TrainView::draw() {
 
     drawStuff();
 
-    // this time drawing is for shadows (except for top view)
-    if (!tw->topCam->value()) {
+    // Legacy stencil "squish" shadows can conflict with shadow mapping
+    // and post-processing; skip them when directional shadow mapping is on
+    // OR when we're doing post-process passes.
+    if (!tw->topCam->value() && !directionalLightOn && !postProcessEnabled) {
         setupShadows();
         drawStuff(true);
         unsetupShadows();
@@ -1239,14 +1311,18 @@ void TrainView::draw() {
     float spotInnerCos = glm::cos(glm::radians(22.0f));
     float spotOuterCos = glm::cos(glm::radians(32.0f));
     glm::vec4 noClipPlane(0.0f);
+    glm::vec2 smokeParams(smokeStartDistance, smokeEndDistance);
+    bool smokeEnabled =
+        (tw && tw->smokeButton) ? (tw->smokeButton->value() != 0) : false;
+
     terrain->draw(totemViewMatrix, totemProjectionMatrix, lightSpaceMatrix,
                   shadowDepthMap, glm::normalize(dirLightDir), cameraPos,
-                  enableShadow, enableLight, pointLightPos, getPointShadowMap(),
-                  getPointFarPlane(), enablePointShadow, enablePointLight,
-                  spotLightPos, spotLightDir, getSpotLightMatrix(),
-                  getSpotShadowMap(), getSpotFarPlane(), spotInnerCos,
-                  spotOuterCos, enableSpotShadow, enableSpotLight, noClipPlane,
-                  false);
+                  smokeParams, smokeEnabled, enableShadow, enableLight,
+                  pointLightPos, getPointShadowMap(), getPointFarPlane(),
+                  enablePointShadow, enablePointLight, spotLightPos,
+                  spotLightDir, getSpotLightMatrix(), getSpotShadowMap(),
+                  getSpotFarPlane(), spotInnerCos, spotOuterCos,
+                  enableSpotShadow, enableSpotLight, noClipPlane, false);
 
     // ---------- Draw the plane ----------
     drawPlane();
@@ -1254,6 +1330,11 @@ void TrainView::draw() {
     // ---------- Post processing ----------
     glDisable(GL_DEPTH_TEST);
     if (postProcessEnabled) {
+        // Fog is computed during the scene render. Disable it for the full-screen
+        // quad passes to avoid fogging the post-process output.
+        const GLboolean fogWasEnabled = glIsEnabled(GL_FOG);
+        glDisable(GL_FOG);
+
         FrameBuffer* readBuffer = mainFrameBuffer;
         FrameBuffer* writeBuffer = tempFrameBuffer;
         int remainingEffects =
@@ -1478,10 +1559,38 @@ void TrainView::draw() {
             }
             --remainingEffects;
         }
+
+        // Ensure we don't leak a post-process shader into the next frame.
+        glUseProgram(0);
+        glActiveTexture(GL_TEXTURE0);
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+        glBindVertexArray(0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, w(), h());
+        glDisable(GL_SCISSOR_TEST);
+        glDisable(GL_BLEND);
+        glDisable(GL_STENCIL_TEST);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+        glDisable(GL_CULL_FACE);
+        glCullFace(GL_BACK);
+        glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+        if (fogWasEnabled) {
+            glEnable(GL_FOG);
+        }
     }
 
     // Unbind
+    glUseProgram(0);
+    glActiveTexture(GL_TEXTURE0);
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, w(), h());
     glBindTexture(GL_TEXTURE_2D, 0);
+    glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
+    glBindVertexArray(0);
 }
 
 //************************************************************************
@@ -1939,7 +2048,74 @@ void TrainView::drawStuff(bool doingShadows) {
                 currentSphereRecursion = clampedRecursion;
             }
         }
+        if (!doingShadows) {
+            if (!odenBumpShader) {
+                odenBumpShader =
+                    new Shader("./shaders/odenBump.vert", nullptr, nullptr,
+                               nullptr, "./shaders/odenBump.frag");
+            }
+
+            const bool directionalLightOn =
+                tw && tw->directionalLightButton &&
+                (tw->directionalLightButton->value() != 0);
+            const bool pointLightOn = tw && tw->pointLightButton &&
+                                      (tw->pointLightButton->value() != 0);
+            const bool spotLightOn = tw && tw->spotLightButton &&
+                                     (tw->spotLightButton->value() != 0);
+
+            odenBumpShader->Use();
+            // Bump disabled for subdivision sphere
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"),
+                0);
+            glUniform1f(
+                glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
+                2.5f);
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
+                directionalLightOn ? 1 : 0);
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
+                pointLightOn ? 1 : 0);
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
+                spotLightOn ? 1 : 0);
+
+            glUniformMatrix4fv(
+                glGetUniformLocation(odenBumpShader->Program, "u_invView"), 1,
+                GL_FALSE, &cachedInvViewMatrix[0][0]);
+
+            glm::mat4 ls = getLightSpaceMatrix();
+            glUniformMatrix4fv(
+                glGetUniformLocation(odenBumpShader->Program, "uLightSpace"), 1,
+                GL_FALSE, &ls[0][0]);
+
+            glm::vec3 lightDir = getDirLightDir();
+            glUniform3fv(
+                glGetUniformLocation(odenBumpShader->Program, "u_lightDir"), 1,
+                &lightDir[0]);
+
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_enableShadow"),
+                directionalLightOn ? 1 : 0);
+
+            {
+                GLint prevActiveTexture = GL_TEXTURE0;
+                glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+                glActiveTexture(GL_TEXTURE10);
+                glBindTexture(GL_TEXTURE_2D, getShadowMap());
+                glUniform1i(glGetUniformLocation(odenBumpShader->Program,
+                                                 "u_shadowMap"),
+                            10);
+                glActiveTexture(prevActiveTexture);
+            }
+        }
+
         subdivisionSphere->draw(doingShadows);
+
+        if (!doingShadows) {
+            glUseProgram(0);
+        }
     }
 
     // ---------- Draw Models ----------
@@ -3272,6 +3448,87 @@ void TrainView::drawOden(bool doingShadows) {
     glPushMatrix();
     glTranslatef(offsetX, offsetY, offsetZ);
 
+    const bool bumpEnabled = (!doingShadows) && tw && tw->bumpButton &&
+                             (tw->bumpButton->value() != 0);
+
+    // Use a compatibility shader in the normal pass so legacy geometry
+    // (immediate mode + GLU quadric) can receive the directional shadow map.
+    if (!doingShadows) {
+        if (!odenBumpShader) {
+            odenBumpShader =
+                new Shader("./shaders/odenBump.vert", nullptr, nullptr, nullptr,
+                           "./shaders/odenBump.frag");
+        }
+        if (!odenBumpTexture) {
+            odenBumpTexture = new Texture2D("./images/bumpMapping.png",
+                                            Texture2D::TEXTURE_HEIGHT);
+        }
+
+        const bool directionalLightOn = tw && tw->directionalLightButton &&
+                                        tw->directionalLightButton->value();
+        const bool pointLightOn =
+            tw && tw->pointLightButton && tw->pointLightButton->value();
+        const bool spotLightOn =
+            tw && tw->spotLightButton && tw->spotLightButton->value();
+
+        odenBumpShader->Use();
+
+        // Bump texture (unit 0) – only required when bump is enabled.
+        if (bumpEnabled) {
+            odenBumpTexture->bind(0);
+            odenBumpShader->setInt("u_bumpTex", 0);
+        } else {
+            Texture2D::unbind(0);
+            odenBumpShader->setInt("u_bumpTex", 0);
+        }
+
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"),
+            bumpEnabled ? 1 : 0);
+        glUniform1f(
+            glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
+            2.5f);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
+            directionalLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
+            pointLightOn ? 1 : 0);
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
+            spotLightOn ? 1 : 0);
+
+        // Directional shadow-map uniforms
+        glUniformMatrix4fv(
+            glGetUniformLocation(odenBumpShader->Program, "u_invView"), 1,
+            GL_FALSE, &cachedInvViewMatrix[0][0]);
+
+        glm::mat4 ls = getLightSpaceMatrix();
+        glUniformMatrix4fv(
+            glGetUniformLocation(odenBumpShader->Program, "uLightSpace"), 1,
+            GL_FALSE, &ls[0][0]);
+
+        glm::vec3 lightDir = getDirLightDir();
+        glUniform3fv(
+            glGetUniformLocation(odenBumpShader->Program, "u_lightDir"), 1,
+            &lightDir[0]);
+
+        glUniform1i(
+            glGetUniformLocation(odenBumpShader->Program, "u_enableShadow"),
+            directionalLightOn ? 1 : 0);
+
+        {
+            GLint prevActiveTexture = GL_TEXTURE0;
+            glGetIntegerv(GL_ACTIVE_TEXTURE, &prevActiveTexture);
+            glActiveTexture(GL_TEXTURE10);
+            glBindTexture(GL_TEXTURE_2D, getShadowMap());
+            glUniform1i(
+                glGetUniformLocation(odenBumpShader->Program, "u_shadowMap"),
+                10);
+            glActiveTexture(prevActiveTexture);
+        }
+    }
+
     // ----------- Tofu --------------
     const float tofuWidth = 20.0f;
     const float tofuDepth = 20.0f;
@@ -3332,44 +3589,7 @@ void TrainView::drawOden(bool doingShadows) {
     glPushMatrix();
     glTranslatef(0.0f, 0.6f * tofuHeight, 0.7f * tofuWidth);
 
-    const bool bumpEnabled = (!doingShadows) && tw && tw->bumpButton &&
-                             (tw->bumpButton->value() != 0);
-    if (bumpEnabled) {
-        if (!odenBumpShader) {
-            odenBumpShader =
-                new Shader("./shaders/odenBump.vert", nullptr, nullptr, nullptr,
-                           "./shaders/odenBump.frag");
-        }
-        if (!odenBumpTexture) {
-            odenBumpTexture = new Texture2D("./images/bumpMapping.png",
-                                            Texture2D::TEXTURE_HEIGHT);
-        }
-
-        const bool directionalLightOn = tw && tw->directionalLightButton &&
-                                        tw->directionalLightButton->value();
-        const bool pointLightOn =
-            tw && tw->pointLightButton && tw->pointLightButton->value();
-        const bool spotLightOn =
-            tw && tw->spotLightButton && tw->spotLightButton->value();
-
-        odenBumpShader->Use();
-        odenBumpTexture->bind(0);
-        odenBumpShader->setInt("u_bumpTex", 0);
-        glUniform1i(
-            glGetUniformLocation(odenBumpShader->Program, "u_bumpEnabled"), 1);
-        glUniform1f(
-            glGetUniformLocation(odenBumpShader->Program, "u_bumpStrength"),
-            2.5f);
-        glUniform1i(
-            glGetUniformLocation(odenBumpShader->Program, "u_enableLight0"),
-            directionalLightOn ? 1 : 0);
-        glUniform1i(
-            glGetUniformLocation(odenBumpShader->Program, "u_enableLight1"),
-            pointLightOn ? 1 : 0);
-        glUniform1i(
-            glGetUniformLocation(odenBumpShader->Program, "u_enableLight2"),
-            spotLightOn ? 1 : 0);
-    }
+    // (shader setup moved to the top of drawOden)
 
     GLUquadric* quad = gluNewQuadric();
     gluQuadricNormals(quad, GLU_SMOOTH);
@@ -3379,7 +3599,7 @@ void TrainView::drawOden(bool doingShadows) {
     gluSphere(quad, porkBallRadius, 16, 16);
     gluDeleteQuadric(quad);
 
-    if (bumpEnabled) {
+    if (!doingShadows) {
         Texture2D::unbind(0);
         glUseProgram(0);
     }

@@ -4,6 +4,7 @@ layout (location = 1) in vec3 aNormal;
 layout (location = 2) in vec2 aTexCoord;
 
 uniform mat4 u_model;
+uniform mat4 uLightSpace;
 
 layout (std140, binding = 0) uniform commom_matrices
 {
@@ -15,6 +16,7 @@ out vec3 vWorldPos;
 out vec3 vNormal;
 out vec2 vTexCoord;
 out vec4 vClipSpace;
+out vec4 vLightSpacePos;
 
 void main()
 {
@@ -25,4 +27,6 @@ void main()
 
     vClipSpace = u_projection * u_view * worldPosition;
     gl_Position = vClipSpace;
+
+    vLightSpacePos = uLightSpace * worldPosition;
 }

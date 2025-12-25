@@ -5,6 +5,7 @@ layout (location = 2) in vec2 texture_coordinate;
 layout (location = 3) in vec3 color;
 
 uniform mat4 u_model;
+uniform mat4 uLightSpace;
 
 layout (std140, binding = 0) uniform commom_matrices
 {
@@ -18,14 +19,17 @@ out V_OUT
    vec3 normal;
    vec2 texture_coordinate;
    vec3 color;
+    vec4 lightSpacePos;
 } v_out;
 
 void main()
 {
     gl_Position = u_projection * u_view * u_model * vec4(position, 1.0f);
 
-    v_out.position = vec3(u_model * vec4(position, 1.0f));
+    vec4 worldPos = u_model * vec4(position, 1.0f);
+    v_out.position = worldPos.xyz;
     v_out.normal = mat3(transpose(inverse(u_model))) * normal;
     v_out.texture_coordinate = vec2(texture_coordinate.x, 1.0f - texture_coordinate.y);
     v_out.color = color;
+    v_out.lightSpacePos = uLightSpace * worldPos;
 }
